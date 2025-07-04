@@ -275,7 +275,24 @@ max_content_length = 300 # 内容截断长度
 
 ## 🚀 部署指南
 
-### Docker部署（推荐）
+> 📋 **快速部署**: 查看详细的 [部署指南文档](DEPLOYMENT.md) 了解Vercel和Railway部署步骤
+
+### 🌐 云服务部署（推荐）
+
+#### Vercel + Railway 部署
+- **前端**: Vercel（免费托管React应用）  
+- **后端**: Railway（免费托管FastAPI应用）
+- **优势**: 零配置、自动部署、高可用性
+
+```bash
+# 运行部署检查工具
+./deploy.sh
+
+# 按照提示完成云端部署
+# 详细步骤请查看 DEPLOYMENT.md
+```
+
+### 🐳 Docker部署
 
 #### 1. 创建Dockerfile
 ```dockerfile
