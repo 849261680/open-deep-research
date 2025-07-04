@@ -23,6 +23,6 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "@api_url"
+    "REACT_APP_API_URL": "https://research-gpt-production-4510.up.railway.app"
   }
 }
