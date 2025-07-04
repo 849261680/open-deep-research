@@ -16,6 +16,11 @@ class ResearchResponse(BaseModel):
     status: str
     data: dict
 
+@router.options("/research")
+async def research_options():
+    """处理CORS预检请求"""
+    return {"message": "OK"}
+
 @router.post("/research")
 async def start_research(request: ResearchRequest):
     """开始研究任务"""
