@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "research-agent-frontend",
+  "name": "research-gpt-frontend-2024",
   "builds": [
     {
       "src": "package.json",
