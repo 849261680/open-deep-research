@@ -273,7 +273,7 @@ class LangChainResearchAgent:
             
             if step.get("search_queries"):
                 for i, search_query in enumerate(step["search_queries"]):
-                    yield {"type": "search_progress", "message": f"🔍 正在搜索：{search_query}", "data": {"query": search_query, "step": i+1, "total": len(step["search_queries"])}}
+                    yield {"type": "search_progress", "message": f"正在搜索：{search_query}", "data": {"query": search_query, "step": i+1, "total": len(step["search_queries"])}}
                     
                     if step.get("tool") == "comprehensive_search":
                         search_result = await search_tools.comprehensive_search(search_query)
@@ -297,13 +297,13 @@ class LangChainResearchAgent:
                                     "query": search_query
                                 })
                     
-                    yield {"type": "search_result", "message": f"✅ 找到 {sum(len(items) for items in search_result.values())} 个结果", "data": {"query": search_query, "sources": [{"title": item['title'], "link": item['link'], "source": source_type} for source_type, items in search_result.items() for item in items[:3] if 'title' in item and 'link' in item]}}
+                    yield {"type": "search_result", "message": f"找到 {sum(len(items) for items in search_result.values())} 个结果", "data": {"query": search_query, "sources": [{"title": item['title'], "link": item['link'], "source": source_type} for source_type, items in search_result.items() for item in items[:3] if 'title' in item and 'link' in item]}}
             
             step_result["search_results"] = search_results
             step_result["search_sources"] = all_search_sources
             
             # 2. 分析搜索结果
-            yield {"type": "analysis_progress", "message": "🧠 正在分析搜索结果...", "data": None}
+            yield {"type": "analysis_progress", "message": "正在分析搜索结果...", "data": None}
             
             if search_results:
                 # 合并所有搜索结果
