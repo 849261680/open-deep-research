@@ -130,13 +130,23 @@ class LangChainResearchAgent:
         """格式化工具名称"""
         return ", ".join([tool.name for tool in self.tools])
     
-    async def plan_research(self, query: str) -> List[Dict[str, Any]]:
-        """使用链制定研究计划"""
+    async def plan_research(self, query: str, callback=None) -> List[Dict[str, Any]]:
+        """使用链制定研究计划，支持进度回调"""
         self._ensure_initialized()
+        
+        if callback:
+            await callback({"type": "planning_step", "message": "🔍 分析研究主题...", "data": {"step": "analyzing_topic"}})
+        
         try:
+            if callback:
+                await callback({"type": "planning_step", "message": "🧠 调用AI生成研究计划...", "data": {"step": "calling_ai"}})
+            
             planning_chain = research_chains.create_planning_chain()
             result = await planning_chain.ainvoke({"query": query})
             response = result.get("research_plan", result) if isinstance(result, dict) else result
+            
+            if callback:
+                await callback({"type": "planning_step", "message": "📋 解析研究计划结构...", "data": {"step": "parsing_plan"}})
             
             # 解析JSON响应
             if "```json" in str(response):
@@ -145,11 +155,20 @@ class LangChainResearchAgent:
                 json_str = response
             
             plan_data = json.loads(json_str)
-            return plan_data.get("research_plan", [])
+            plan = plan_data.get("research_plan", [])
+            
+            if callback:
+                await callback({"type": "planning_step", "message": f"✅ 成功生成{len(plan)}个研究步骤", "data": {"step": "plan_ready", "plan_preview": plan}})
+            
+            return plan
         except Exception as e:
             print(f"Research planning error: {e}")
+            
+            if callback:
+                await callback({"type": "planning_step", "message": "⚠️ AI计划生成失败，使用默认计划", "data": {"step": "fallback_plan"}})
+            
             # 返回默认计划
-            return [
+            default_plan = [
                 {
                     "step": 1,
                     "title": "背景调研",
@@ -161,20 +180,156 @@ class LangChainResearchAgent:
                 {
                     "step": 2,
                     "title": "深入分析", 
-                    "description": "使用Google搜索获取最新信息",
-                    "tool": "google_search",
+                    "description": "使用Tavily搜索获取最新信息",
+                    "tool": "comprehensive_search",
                     "search_queries": [f"{query} 分析", f"{query} 最新"],
                     "expected_outcome": "获得详细分析和当前状况"
                 },
                 {
                     "step": 3,
-                    "title": "权威资料",
-                    "description": "使用Wikipedia搜索获取权威信息", 
-                    "tool": "wikipedia_search",
-                    "search_queries": [query, f"{query} 定义"],
-                    "expected_outcome": "获得可靠的参考资料"
+                    "title": "综合评估",
+                    "description": "全面搜索相关资料进行综合分析", 
+                    "tool": "comprehensive_search",
+                    "search_queries": [f"{query} 评估", f"{query} 总结"],
+                    "expected_outcome": "获得全面的分析结论"
                 }
             ]
+            
+            if callback:
+                await callback({"type": "planning_step", "message": "📋 默认计划准备完成", "data": {"step": "default_ready", "plan_preview": default_plan}})
+            
+            return default_plan
+    
+    async def _plan_research_with_updates(self, query: str) -> AsyncGenerator[Dict[str, Any], None]:
+        """带进度更新的研究计划制定"""
+        
+        try:
+            # 直接调用AI生成计划，不显示中间步骤
+            planning_chain = research_chains.create_planning_chain()
+            result = await planning_chain.ainvoke({"query": query})
+            response = result.get("research_plan", result) if isinstance(result, dict) else result
+            
+            # 解析JSON响应
+            if "```json" in str(response):
+                json_str = response.split("```json")[1].split("```")[0].strip()
+            else:
+                json_str = response
+            
+            plan_data = json.loads(json_str)
+            plan = plan_data.get("research_plan", [])
+            
+            # 直接发送完整计划
+            yield {"type": "plan", "message": "研究计划制定完成", "data": plan}
+            
+        except Exception as e:
+            print(f"Research planning error: {e}")
+            
+            # AI生成失败，使用默认计划
+            default_plan = [
+                {
+                    "step": 1,
+                    "title": "背景调研",
+                    "description": "使用综合搜索收集基本信息",
+                    "tool": "comprehensive_search",
+                    "search_queries": [query, f"{query} 背景"],
+                    "expected_outcome": "了解基本概念和背景"
+                },
+                {
+                    "step": 2,
+                    "title": "深入分析", 
+                    "description": "使用Tavily搜索获取最新信息",
+                    "tool": "comprehensive_search",
+                    "search_queries": [f"{query} 分析", f"{query} 最新"],
+                    "expected_outcome": "获得详细分析和当前状况"
+                },
+                {
+                    "step": 3,
+                    "title": "综合评估",
+                    "description": "全面搜索相关资料进行综合分析", 
+                    "tool": "comprehensive_search",
+                    "search_queries": [f"{query} 评估", f"{query} 总结"],
+                    "expected_outcome": "获得全面的分析结论"
+                }
+            ]
+            
+            yield {"type": "plan", "message": "研究计划制定完成", "data": default_plan}
+    
+    async def _execute_research_step_with_updates(self, step: Dict[str, Any], query: str) -> AsyncGenerator[Dict[str, Any], None]:
+        """带进度更新的研究步骤执行"""
+        step_result = {
+            "step": step["step"],
+            "title": step["title"],
+            "status": "executing",
+            "search_results": {},
+            "search_sources": [],  # 新增：搜索来源信息
+            "analysis": "",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        try:
+            # 1. 执行搜索 - 显示搜索进度
+            search_results = {}
+            all_search_sources = []
+            
+            if step.get("search_queries"):
+                for i, search_query in enumerate(step["search_queries"]):
+                    yield {"type": "search_progress", "message": f"🔍 正在搜索：{search_query}", "data": {"query": search_query, "step": i+1, "total": len(step["search_queries"])}}
+                    
+                    if step.get("tool") == "comprehensive_search":
+                        search_result = await search_tools.comprehensive_search(search_query)
+                    elif step.get("tool") == "google_search":
+                        search_result = {"web": await search_tools.google_search(search_query)}
+                    elif step.get("tool") == "wikipedia_search":
+                        search_result = {"wikipedia": await search_tools.wikipedia_search(search_query)}
+                    else:
+                        search_result = await search_tools.comprehensive_search(search_query)
+                    
+                    search_results[search_query] = search_result
+                    
+                    # 收集搜索来源信息
+                    for source_type, items in search_result.items():
+                        for item in items[:3]:  # 只取前3个结果
+                            if 'title' in item and 'link' in item:
+                                all_search_sources.append({
+                                    "title": item['title'],
+                                    "link": item['link'],
+                                    "source": source_type,
+                                    "query": search_query
+                                })
+                    
+                    yield {"type": "search_result", "message": f"✅ 找到 {sum(len(items) for items in search_result.values())} 个结果", "data": {"query": search_query, "sources": [{"title": item['title'], "link": item['link'], "source": source_type} for source_type, items in search_result.items() for item in items[:3] if 'title' in item and 'link' in item]}}
+            
+            step_result["search_results"] = search_results
+            step_result["search_sources"] = all_search_sources
+            
+            # 2. 分析搜索结果
+            yield {"type": "analysis_progress", "message": "🧠 正在分析搜索结果...", "data": None}
+            
+            if search_results:
+                # 合并所有搜索结果
+                combined_results = {}
+                for query_results in search_results.values():
+                    for source, items in query_results.items():
+                        if source not in combined_results:
+                            combined_results[source] = []
+                        combined_results[source].extend(items)
+                
+                # 使用链进行分析
+                analysis = await research_chains.analyze_search_results_with_chain(
+                    step["title"], 
+                    combined_results
+                )
+                step_result["analysis"] = analysis
+            else:
+                step_result["analysis"] = "没有找到相关搜索结果"
+            
+            step_result["status"] = "completed"
+            yield {"type": "step_complete", "message": f"完成：{step['title']}", "data": step_result}
+            
+        except Exception as e:
+            step_result["analysis"] = f"执行错误: {str(e)}"
+            step_result["status"] = "failed"
+            yield {"type": "step_complete", "message": f"步骤失败：{step['title']}", "data": step_result}
     
     async def execute_research_step(self, step: Dict[str, Any], query: str) -> Dict[str, Any]:
         """执行单个研究步骤"""
@@ -319,21 +474,44 @@ class LangChainResearchAgent:
         """执行完整的研究流程"""
         self._ensure_initialized()
         
-        # 1. 制定研究计划
+        # 1. 制定研究计划 - 显示详细过程
         yield {"type": "planning", "message": "正在制定研究计划...", "data": None}
         
-        research_plan = await self.plan_research(query)
-        yield {"type": "plan", "message": "研究计划制定完成", "data": research_plan}
+        # 定义回调函数来实时发送计划制定进度
+        async def planning_callback(update):
+            yield update
+        
+        # 使用生成器来捕获计划制定的进度
+        planning_updates = []
+        
+        async def capture_planning_updates(update):
+            planning_updates.append(update)
+            yield update
+        
+        # 调用带回调的计划制定方法
+        research_plan = None
+        async for update in self._plan_research_with_updates(query):
+            yield update
+            if update.get("type") == "plan" and update.get("data"):
+                research_plan = update["data"]
+        
+        if not research_plan:
+            # 如果没有获得计划，使用备用方法
+            research_plan = await self.plan_research(query)
+            yield {"type": "plan", "message": "研究计划制定完成", "data": research_plan}
         
         # 2. 执行研究步骤
         research_results = []
         for step in research_plan:
             yield {"type": "step_start", "message": f"开始执行：{step['title']}", "data": step}
             
-            step_result = await self.execute_research_step(step, query)
-            research_results.append(step_result)
-            
-            yield {"type": "step_complete", "message": f"完成：{step['title']}", "data": step_result}
+            # 执行带进度更新的研究步骤
+            step_result = None
+            async for update in self._execute_research_step_with_updates(step, query):
+                yield update
+                if update.get("type") == "step_complete":
+                    step_result = update["data"]
+                    research_results.append(step_result)
         
         # 3. 生成最终报告
         yield {"type": "report_generating", "message": "正在生成最终研究报告...", "data": None}
