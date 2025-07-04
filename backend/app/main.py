@@ -9,6 +9,7 @@ app = FastAPI(title="Deep Research Agent", version="1.0.0")
 allowed_origins = [
     "http://localhost:3000",  # 本地开发
     "http://localhost:3001",  # 备用端口
+    "https://research-gpt-blue.vercel.app",  # Vercel生产域名
 ]
 
 # 从环境变量添加生产域名
