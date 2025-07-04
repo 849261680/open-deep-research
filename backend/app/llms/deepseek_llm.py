@@ -6,11 +6,11 @@ from app.services.deepseek_service import deepseek_service
 
 
 class DeepSeekLLM(LLM):
-    """Custom LLM wrapper for DeepSeek API."""
+    """Custom LLM wrapper for DeepSeek API，优化性能."""
     
     model_name: str = "deepseek-chat"
     temperature: float = 0.7
-    max_tokens: int = 4000
+    max_tokens: int = 2000  # 减少最大 tokens 以提高速度
     
     @property
     def _llm_type(self) -> str:

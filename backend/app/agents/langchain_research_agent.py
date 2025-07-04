@@ -232,7 +232,7 @@ class LangChainResearchAgent:
         return step_result
     
     async def generate_final_report(self, research_results: List[Dict[str, Any]], original_query: str) -> str:
-        """使用链生成最终研究报告"""
+        """生成最终研究报告，优化为单次API调用"""
         
         try:
             # 1. 收集所有分析结果
@@ -244,26 +244,50 @@ class LangChainResearchAgent:
                         "analysis": result["analysis"]
                     })
             
-            # 2. 使用综合分析链
-            synthesis_chain = research_chains.create_synthesis_chain()
+            # 2. 直接生成最终报告，避免多次API调用
             all_analyses_text = "\n\n".join([f"**{analysis['title']}**:\n{analysis['analysis']}" for analysis in step_analyses])
             
-            result = await synthesis_chain.ainvoke({
-                "query": original_query,
-                "all_analyses": all_analyses_text
-            })
-            synthesis = result.get("synthesis", result) if isinstance(result, dict) else result
+            # 限制输入长度，确保不超时
+            max_input_length = 1500
+            if len(all_analyses_text) > max_input_length:
+                all_analyses_text = all_analyses_text[:max_input_length] + "...\n\n[内容已截断]"
+                print(f"⚠️ 研究结果过长，已截断至 {max_input_length} 字符")
             
-            # 3. 使用报告生成链
-            report_chain = research_chains.create_report_generation_chain()
+            # 创建简化的报告生成提示
+            print(f"📊 最终报告输入统计:")
+            print(f"   - 查询: {original_query}")
+            print(f"   - 分析文本长度: {len(all_analyses_text)} 字符")
+            print(f"   - 完成的步骤数: {len(step_analyses)}")
             
-            result = await report_chain.ainvoke({
-                "query": original_query,
-                "research_plan": json.dumps([{"title": r["title"], "description": r.get("description", "")} for r in research_results], ensure_ascii=False),
-                "step_analyses": all_analyses_text,
-                "synthesis": synthesis
-            })
-            final_report = result.get("final_report", result) if isinstance(result, dict) else result
+            report_prompt = f"""
+请基于以下研究结果，为"{original_query}"生成一份简洁的研究报告：
+
+研究结果：
+{all_analyses_text}
+
+请按以下格式生成报告：
+
+# {original_query} - 研究报告
+
+## 核心发现
+（列出3-5个关键发现）
+
+## 详细分析  
+（基于研究结果的深入分析）
+
+## 结论与建议
+（总结性结论和实用建议）
+
+要求：
+1. 内容简洁但有深度
+2. 突出重点信息
+3. 逻辑清晰
+4. 中文撰写
+"""
+            
+            # 直接调用LLM，避免复杂链式处理
+            from app.services.deepseek_service import deepseek_service
+            final_report = await deepseek_service.generate_response(report_prompt, max_tokens=1500)
             
             return final_report
             

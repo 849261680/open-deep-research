@@ -233,27 +233,59 @@ class ResearchChains:
         return documents
     
     async def analyze_search_results_with_chain(self, step_title: str, search_results: Dict[str, List[Dict[str, Any]]]) -> str:
-        """使用链分析搜索结果"""
-        # 处理搜索结果
+        """使用链分析搜索结果，优化性能"""
+        # 处理搜索结果，但限制文档数量和长度
         documents = self.process_search_results(search_results)
         
-        # 如果文档太多，先进行摘要
-        if len(documents) > 10:
-            summarization_chain = self.create_summarization_chain()
-            result = await summarization_chain.ainvoke({"input_documents": documents})
-            search_results_text = result.get("output_text", result) if isinstance(result, dict) else result
+        # 限制文档数量，避免处理过多内容
+        max_docs = 5
+        if len(documents) > max_docs:
+            documents = documents[:max_docs]
+            print(f"⚠️ 限制处理文档数量为 {max_docs}，以提高性能")
+        
+        # 使用简化的摘要方法，避免复杂的 MapReduce 链
+        if len(documents) > 0:
+            return await self._simple_summarize_documents(step_title, documents)
         else:
-            search_results_text = "\n\n".join([doc.page_content for doc in documents])
+            return "未找到相关搜索结果"
+    
+    async def _simple_summarize_documents(self, step_title: str, documents: List[Document]) -> str:
+        """简化的文档摘要方法，避免多次API调用"""
+        # 合并所有文档内容，但限制总长度
+        combined_content = ""
+        max_total_length = 2500  # 约 1500-2000 tokens
         
-        # 使用分析链
-        analysis_chain = self.create_search_analysis_chain()
-        result = await analysis_chain.ainvoke({
-            "step_title": step_title,
-            "search_results": search_results_text
-        })
-        analysis = result.get("analysis", result) if isinstance(result, dict) else result
+        for doc in documents:
+            if len(combined_content) + len(doc.page_content) > max_total_length:
+                # 如果添加这个文档会超出限制，就截断
+                remaining_space = max_total_length - len(combined_content)
+                if remaining_space > 100:  # 至少留100字符的空间
+                    combined_content += doc.page_content[:remaining_space] + "...\n\n"
+                break
+            else:
+                combined_content += doc.page_content + "\n\n"
         
-        return analysis
+        # 创建简单的分析提示
+        analysis_prompt = f"""
+请为研究步骤'{step_title}'分析以下搜索结果，提供简洁的摘要：
+
+{combined_content}
+
+请提供：
+1. 关键发现（2-3点）
+2. 重要信息总结
+3. 这一步骤的结论
+
+要求：简洁明了，重点突出，中文回复。
+"""
+        
+        try:
+            # 直接调用 LLM，避免复杂的链式处理
+            result = await self.llm._acall(analysis_prompt)
+            return result
+        except Exception as e:
+            print(f"简化摘要生成失败: {e}")
+            return f"无法生成步骤'{step_title}'的分析摘要，但搜索到了 {len(documents)} 个相关结果。"
 
 
 # 全局实例
