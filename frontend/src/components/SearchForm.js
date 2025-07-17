@@ -28,16 +28,6 @@ const SearchForm = ({ onSubmit, isLoading, disabled = false }) => {
     }
   };
 
-  const exampleQueries = [
-    '人工智能在医疗领域的应用现状',
-    '区块链技术的发展趋势',
-    '新能源汽车市场分析',
-    '量子计算的最新进展'
-  ];
-
-  const handleExampleClick = (example) => {
-    setQuery(example);
-  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
@@ -66,21 +56,6 @@ const SearchForm = ({ onSubmit, isLoading, disabled = false }) => {
         </button>
       </form>
 
-      <div className="mt-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">示例研究主题：</h3>
-        <div className="flex flex-wrap gap-2">
-          {exampleQueries.map((example, index) => (
-            <button
-              key={index}
-              onClick={() => handleExampleClick(example)}
-              disabled={isLoading || disabled}
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {example}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
