@@ -7,11 +7,11 @@ const Header = () => {
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 p-1.5 shadow-sm">
+            <div className="w-10 h-10 rounded-lg shadow-sm">
               <img 
                 src="/research-agent-icon-header.svg" 
                 alt="Research Agent" 
-                className="w-full h-full"
+                className="w-full h-full rounded-lg"
               />
             </div>
             <div>

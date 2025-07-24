@@ -1,26 +1,36 @@
 <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="16" cy="16" r="15" fill="url(#iconGradient)"/>
+  
   <!-- 放大镜环 - 更粗的线条 -->
-  <circle cx="14" cy="14" r="9" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <circle cx="14" cy="14" r="8" fill="none" stroke="#FFFFFF" stroke-width="2.5"/>
   
   <!-- 放大镜柄 - 更粗更明显 -->
-  <line x1="20.5" y1="20.5" x2="27" y2="27" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="20" y1="20" x2="26" y2="26" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
   
   <!-- 简化的大脑图案 - 更大更清晰 -->
   <g fill="#FFFFFF">
     <!-- 中心大节点 -->
-    <circle cx="14" cy="13" r="2.5"/>
+    <circle cx="14" cy="13" r="2"/>
     <!-- 周围小节点 -->
-    <circle cx="10" cy="16" r="1.8"/>
-    <circle cx="18" cy="16" r="1.8"/>
-    <circle cx="14" cy="18" r="1.5"/>
+    <circle cx="11" cy="16" r="1.5"/>
+    <circle cx="17" cy="16" r="1.5"/>
+    <circle cx="14" cy="17.5" r="1.2"/>
   </g>
   
   <!-- 连接线 - 更粗更明显 -->
-  <g stroke="#FFFFFF" stroke-width="1.5" fill="none" opacity="0.8">
-    <line x1="14" y1="13" x2="10" y2="16"/>
-    <line x1="14" y1="13" x2="18" y2="16"/>
-    <line x1="14" y1="13" x2="14" y2="18"/>
-    <line x1="10" y1="16" x2="14" y2="18"/>
-    <line x1="18" y1="16" x2="14" y2="18"/>
+  <g stroke="#FFFFFF" stroke-width="1.2" fill="none" opacity="0.9">
+    <line x1="14" y1="13" x2="11" y2="16"/>
+    <line x1="14" y1="13" x2="17" y2="16"/>
+    <line x1="14" y1="13" x2="14" y2="17.5"/>
+    <line x1="11" y1="16" x2="14" y2="17.5"/>
+    <line x1="17" y1="16" x2="14" y2="17.5"/>
   </g>
 </svg>
