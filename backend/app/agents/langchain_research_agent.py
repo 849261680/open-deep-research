@@ -442,7 +442,7 @@ class LangChainResearchAgent:
             
             # 直接调用LLM，避免复杂链式处理
             from app.services.deepseek_service import deepseek_service
-            final_report = await deepseek_service.generate_response(report_prompt, max_tokens=1500)
+            final_report = await deepseek_service.generate_response(report_prompt, max_tokens=2500)
             
             return final_report
             

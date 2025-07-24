@@ -16,7 +16,7 @@ class DeepSeekService:
             "Content-Type": "application/json"
         }
     
-    async def generate_response(self, prompt: str, max_tokens: int = 2000) -> str:
+    async def generate_response(self, prompt: str, max_tokens: int = 2500) -> str:
         """使用DeepSeek API生成回复，优化性能"""
         if not self.api_key:
             raise ValueError("DeepSeek API key not found")
@@ -32,7 +32,7 @@ class DeepSeekService:
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": min(max_tokens, 2000),  # 限制最大输出
+            "max_tokens": min(max_tokens, 2500),  # 限制最大输出
             "temperature": 0.7,
             "stream": False
         }

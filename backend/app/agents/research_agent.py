@@ -168,7 +168,7 @@ class ResearchAgent:
 """
         
         try:
-            report = await self.deepseek.generate_response(report_prompt, max_tokens=6000)
+            report = await self.deepseek.generate_response(report_prompt, max_tokens=2500)
             return report
         except Exception as e:
             print(f"Report generation error: {e}")

@@ -83,7 +83,7 @@ function App() {
               Deep Research Agent
             </h1>
             <p className="text-xl text-gray-600">
-              智能研究助手，为您提供深度分析和专业报告
+              深度研究智能体，为您提供深度分析和专业报告
             </p>
             
             {/* 后端状态指示器 */}
