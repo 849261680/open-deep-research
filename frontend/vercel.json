@@ -18,6 +18,12 @@
       }
     },
     {
+      "src": "/(favicon\\.ico|.*\\.svg|.*\\.png|.*\\.json)",
+      "headers": {
+        "cache-control": "s-maxage=86400"
+      }
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }

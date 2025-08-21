@@ -1,5 +1,5 @@
 from langchain.llms.base import LLM
-from langchain.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from typing import List
 import asyncio
 from app.services.deepseek_service import deepseek_service

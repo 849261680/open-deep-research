@@ -1,5 +1,5 @@
 from langchain.tools import BaseTool
-from langchain.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from typing import Optional, Type, List, Dict, Any
 import json
 from app.services.search_tools import search_tools
