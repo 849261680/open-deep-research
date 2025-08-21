@@ -1,6 +1,6 @@
 from typing import Dict, List, Any
 from datetime import datetime
-from app.services.deepseek_service import deepseek_service
+from app.chains.research_chains import research_chains
 
 
 class ReportGenerator:
@@ -10,29 +10,40 @@ class ReportGenerator:
         pass
     
     async def generate_final_report(self, research_results: List[Dict[str, Any]], original_query: str) -> str:
-        """生成最终研究报告，优化为单次API调用
+        """生成最终研究报告，使用统一的 chains 架构
         
-        为什么优化为单次API调用：
-        - 减少API调用次数，提高性能和降低成本
-        - 避免多次调用可能导致的一致性问题
+        为什么使用 chains 架构：
+        - 保持系统架构一致性，避免"两套系统并存"
+        - 统一的提示词管理，便于维护和优化
+        - 遵循 LangChain 最佳实践
         """
         try:
             # 1. 收集所有分析结果
             step_analyses = self._collect_step_analyses(research_results)
             
-            # 2. 直接生成最终报告，避免多次API调用
+            # 2. 格式化分析结果，准备 chains 输入
             all_analyses_text = self._format_analyses_text(step_analyses)
             
-            # 限制输入长度，确保不超时 - 为什么限制：避免API超时，确保服务稳定性
+            # 3. 限制输入长度，确保不超时 - 为什么限制：避免API超时，确保服务稳定性
             all_analyses_text = self._limit_input_length(all_analyses_text)
             
-            # 创建简化的报告生成提示
+            # 4. 记录统计信息
             self._log_report_statistics(original_query, all_analyses_text, step_analyses)
             
-            report_prompt = self._create_report_prompt(original_query, all_analyses_text)
+            # 5. 使用 report_chains 生成最终报告，保持架构一致性
+            report_chain = research_chains.create_report_generation_chain()
             
-            # 直接调用LLM，避免复杂链式处理 - 为什么避免复杂链式：提高性能，减少出错概率
-            final_report = await deepseek_service.generate_response(report_prompt, max_tokens=1500)
+            # 6. 准备 chains 所需的输入格式
+            chain_input = {
+                "query": original_query,
+                "research_plan": "基于多步骤研究计划",  # 简化的研究计划描述
+                "step_analyses": all_analyses_text,
+                "synthesis": f"针对'{original_query}'的综合分析"  # 简化的综合分析
+            }
+            
+            # 7. 调用链生成报告
+            result = await report_chain.ainvoke(chain_input)
+            final_report = result.get("final_report", result) if isinstance(result, dict) else result
             
             return final_report
             
@@ -89,39 +100,6 @@ class ReportGenerator:
         print(f"   - 查询: {original_query}")
         print(f"   - 分析文本长度: {len(all_analyses_text)} 字符")
         print(f"   - 完成的步骤数: {len(step_analyses)}")
-    
-    def _create_report_prompt(self, original_query: str, all_analyses_text: str) -> str:
-        """创建报告生成提示
-        
-        为什么需要单独的方法：
-        - 提示词是核心逻辑，需要独立管理
-        - 便于调整和优化提示词
-        """
-        return f"""
-请基于以下研究结果，为"{original_query}"生成一份简洁的研究报告：
-
-研究结果：
-{all_analyses_text}
-
-请按以下格式生成报告：
-
-# {original_query} - 研究报告
-
-## 核心发现
-（列出3-5个关键发现）
-
-## 详细分析  
-（基于研究结果的深入分析）
-
-## 结论与建议
-（总结性结论和实用建议）
-
-要求：
-1. 内容简洁但有深度
-2. 突出重点信息
-3. 逻辑清晰
-4. 中文撰写
-"""
     
     def _generate_simple_report(self, research_results: List[Dict[str, Any]], original_query: str) -> str:
         """生成简单报告（回退方案）
