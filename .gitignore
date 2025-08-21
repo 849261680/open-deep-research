@@ -48,3 +48,5 @@ test_api.py
 
 # Logs
 *.log
+
+CLAUDE.md
