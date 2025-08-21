@@ -126,14 +126,45 @@ class SearchTools:
             return await self.tavily_search(query, num_results)
     
     async def duckduckgo_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
-        """DuckDuckGo搜索已禁用"""
-        print(f"⚠️ DuckDuckGo 搜索已禁用，查询: {query}")
-        return []
+        """DuckDuckGo搜索 - 免费备选方案"""
+        print(f"🔍 开始 DuckDuckGo 搜索: {query}")
+        
+        try:
+            import concurrent.futures
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(self._sync_duckduckgo_search, query, num_results)
+                result = await asyncio.wait_for(asyncio.wrap_future(future), timeout=15.0)
+                print(f"✅ DuckDuckGo 搜索成功，返回 {len(result)} 个结果")
+                return result
+        except asyncio.TimeoutError:
+            print(f"⏰ DuckDuckGo search timeout for query: {query}")
+            return []
+        except Exception as e:
+            print(f"❌ DuckDuckGo search error: {e}")
+            return []
     
     def _sync_duckduckgo_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
-        """DuckDuckGo搜索已禁用"""
-        print(f"⚠️ 同步 DuckDuckGo 搜索已禁用，查询: {query}")
-        return []
+        """同步版本的DuckDuckGo搜索 - 免费备选方案"""
+        try:
+            from duckduckgo_search import DDGS
+            
+            with DDGS() as ddgs:
+                results = []
+                ddg_results = ddgs.text(query, max_results=min(num_results, 10))
+                
+                for result in ddg_results:
+                    results.append({
+                        "title": result.get("title", ""),
+                        "link": result.get("href", ""),
+                        "snippet": result.get("body", ""),
+                        "source": "duckduckgo"
+                    })
+                
+                return results
+        except Exception as e:
+            print(f"❌ DuckDuckGo 同步搜索失败: {e}")
+            return []
     
     async def wikipedia_search(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
         """Wikipedia搜索已禁用，避免超时问题"""
@@ -171,8 +202,18 @@ class SearchTools:
             results["academic"] = []   # 不使用学术搜索避免复杂性
         else:
             print(f"⚠️ Tavily 不可用，使用备用搜索方案")
-            # 回退方案：只使用 Google 搜索
-            results["web"] = await self.google_search(query, 8)
+            # 回退方案：尝试 Google 搜索，如果失败则使用 DuckDuckGo
+            try:
+                google_results = await self.google_search(query, 8)
+                if google_results:
+                    results["web"] = google_results
+                else:
+                    print(f"🔄 Google搜索无结果，尝试DuckDuckGo搜索")
+                    results["web"] = await self.duckduckgo_search(query, 8)
+            except Exception as e:
+                print(f"⚠️ Google搜索失败 ({e})，使用DuckDuckGo搜索")
+                results["web"] = await self.duckduckgo_search(query, 8)
+            
             results["wikipedia"] = []
             results["academic"] = []
         
