@@ -1,4 +1,6 @@
 import axios from 'axios';
+import errorHandler from './errorHandler';
+import JSONUtils from './jsonUtils';
 
 // API基础配置
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -11,6 +13,16 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// 添加统一的错误处理
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const handledError = errorHandler.handleApiError(error);
+    errorHandler.logError(handledError);
+    return Promise.reject(handledError);
+  }
+);
 
 // 请求拦截器
 api.interceptors.request.use(
@@ -118,9 +130,11 @@ export const researchAPI = {
 
   // 开始研究（非流式）
   startResearch: async (query) => {
-    const response = await api.post('/api/research', {
-      query: query,
-      stream: false
+    const response = await errorHandler.withRetry(async () => {
+      return await api.post('/api/research', {
+        query: query,
+        stream: false
+      });
     });
     return response.data;
   },
