@@ -1,3 +1,5 @@
+# 根目录配置 - 统一管理依赖和工作区
+
 [project]
 name = "research-gpt"
 version = "1.0.0"
@@ -12,6 +14,13 @@ dependencies = [
     "pydantic>=2.7.4",
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.6",
+    "langchain>=0.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-community>=0.0.20",
+    "requests>=2.31.0",
+    "tavily-python>=0.3.0",
+    "duckduckgo-search>=3.9.0",
+    "wikipedia>=1.4.0",
 ]
 
 [project.optional-dependencies]
@@ -22,30 +31,16 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[dependency-groups]
-dev = [
-    "pytest>=7.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-]
-
-[tool.uv.workspace]
-members = [
-    "backend",
-]
-
+# [tool.uv.workspace]
+# members = [
+#     "backend",
+# ]
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-# 包含的规则集
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -64,7 +59,6 @@ select = [
     "FA",  # flake8-future-annotations
 ]
 
-# 忽略的规则
 ignore = [
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
@@ -88,25 +82,20 @@ ignore = [
     "S",    # no security concerns in scripts
 ]
 
-# flake8-annotations 配置
 [tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = true
 ignore-fully-untyped = true
 
-# isort 配置
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 split-on-trailing-comma = true
 force-single-line = true
 
-# flake8-bugbear 配置
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
-# flake8-import-conventions 配置
 [tool.ruff.lint.flake8-import-conventions]
 banned-from = ["typing"]
 
-# McCabe 复杂度检查
 [tool.ruff.lint.mccabe]
 max-complexity = 10

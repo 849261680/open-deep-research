@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections.abc import Any
+from typing import Any
 
 import requests
 import urllib3
