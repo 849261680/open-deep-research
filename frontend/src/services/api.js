@@ -127,7 +127,7 @@ export const researchAPI = {
         
         for (const line of lines) {
           if (line.trim() && line.startsWith('data: ')) {
-              try {
+            try {
               const jsonStr = line.slice(6).trim();
               // 检查JSON字符串是否完整
               if (jsonStr && jsonStr !== '[DONE]') {
