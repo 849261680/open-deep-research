@@ -36,64 +36,6 @@ api.interceptors.response.use(
   }
 );
 
-// JSON处理工具方法
-const jsonUtils = {
-  // 验证JSON字符串是否有效
-  isValidJSON: (str) => {
-    try {
-      JSON.parse(str);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  },
-
-  // 尝试修复不完整的JSON
-  tryFixJSON: (jsonStr, onUpdate) => {
-    if (!jsonStr || jsonStr === '[DONE]') return;
-    
-    try {
-      // 尝试添加缺失的引号或括号
-      let fixedJsonStr = jsonStr;
-      
-      // 检查是否缺少结束引号
-      if (!fixedJsonStr.endsWith('"') && fixedJsonStr.includes('"')) {
-        const quoteCount = (fixedJsonStr.match(/"/g) || []).length;
-        if (quoteCount % 2 !== 0) {
-          fixedJsonStr += '"';
-        }
-      }
-      
-      // 检查是否缺少结束括号
-      if (!fixedJsonStr.endsWith('}') && !fixedJsonStr.endsWith(']')) {
-        const openBraceCount = (fixedJsonStr.match(/{/g) || []).length;
-        const closeBraceCount = (fixedJsonStr.match(/}/g) || []).length;
-        const openBracketCount = (fixedJsonStr.match(/\[/g) || []).length;
-        const closeBracketCount = (fixedJsonStr.match(/\]/g) || []).length;
-        
-        if (openBraceCount > closeBraceCount) {
-          fixedJsonStr += '}';
-        } else if (openBracketCount > closeBracketCount) {
-          fixedJsonStr += ']';
-        } else {
-          // 默认添加对象结束符
-          fixedJsonStr += '}';
-        }
-      }
-      
-      if (jsonUtils.isValidJSON(fixedJsonStr)) {
-        const data = JSON.parse(fixedJsonStr);
-        console.warn('已修复不完整的JSON数据');
-        onUpdate(data);
-      } else {
-        console.warn('无法修复JSON数据:', fixedJsonStr);
-      }
-    } catch (fixError) {
-      console.warn('修复JSON数据失败:', fixError);
-    }
-  }
-};
-
 // 研究API
 export const researchAPI = {
   // 开始研究（流式）
@@ -116,35 +58,56 @@ export const researchAPI = {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
+      let pendingData = '';
 
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) break;
         
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.trim() && line.startsWith('data: ')) {
-            try {
-              const jsonStr = line.slice(6).trim();
-              // 检查JSON字符串是否完整
-              if (jsonStr && jsonStr !== '[DONE]') {
-                // 验证JSON格式
-                if (jsonUtils.isValidJSON(jsonStr)) {
-                  const data = JSON.parse(jsonStr);
-                  onUpdate(data);
-                } else {
-                  console.warn('无效的JSON格式，跳过:', jsonStr);
-                }
-              }
-            } catch (parseError) {
-              console.warn('解析流数据失败:', parseError, '数据:', line.slice(6));
-              // 尝试修复不完整的JSON
-              jsonUtils.tryFixJSON(line.slice(6).trim(), onUpdate);
-            }
+        buffer += decoder.decode(value, { stream: true });
+
+        let eventSeparatorIndex;
+        while ((eventSeparatorIndex = buffer.indexOf('\n\n')) !== -1) {
+          const rawEvent = buffer.slice(0, eventSeparatorIndex).trim();
+          buffer = buffer.slice(eventSeparatorIndex + 2);
+
+          if (!rawEvent) continue;
+
+          const dataLines = rawEvent
+            .split('\n')
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.replace(/^data:\s*/, ''));
+
+          if (dataLines.length === 0) {
+            continue;
           }
+
+          const payload = dataLines.join('\n').trim();
+          if (!payload || payload === '[DONE]') {
+            continue;
+          }
+
+          const candidate = pendingData ? `${pendingData}${payload}` : payload;
+
+          try {
+            const data = JSON.parse(candidate);
+            pendingData = '';
+            onUpdate(data);
+          } catch {
+            pendingData = candidate;
+            console.warn('等待更多数据以完成JSON解析');
+          }
+        }
+      }
+
+      if (pendingData) {
+        try {
+          const data = JSON.parse(pendingData);
+          onUpdate(data);
+        } catch {
+          console.warn('流结束时仍存在无法解析的JSON片段:', pendingData);
         }
       }
     } catch (error) {

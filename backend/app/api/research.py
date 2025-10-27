@@ -52,7 +52,7 @@ async def start_research(request: ResearchRequest):
 
         return StreamingResponse(
             generate(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
     # 非流式响应
