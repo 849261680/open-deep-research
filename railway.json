@@ -1,8 +1,12 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.cargo/bin:$PATH\" && cd backend && uv pip install -e ."
   },
   "deploy": {
-    "startCommand": "cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    "startCommand": "cd backend && uv run python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "ON_FAILURE"
   }
 }

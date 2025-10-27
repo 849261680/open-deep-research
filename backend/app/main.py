@@ -1,6 +1,8 @@
 import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.research import router as research_router
 
 app = FastAPI(title="Deep Research Agent", version="1.0.0")
@@ -20,10 +22,7 @@ if frontend_url:
 # Vercel自动部署域名
 vercel_url = os.getenv("VERCEL_URL")
 if vercel_url:
-    allowed_origins.extend([
-        f"https://{vercel_url}",
-        f"http://{vercel_url}"
-    ])
+    allowed_origins.extend([f"https://{vercel_url}", f"http://{vercel_url}"])
 
 # 启用CORS
 app.add_middleware(
@@ -37,15 +36,19 @@ app.add_middleware(
 # 路由
 app.include_router(research_router, prefix="/api")
 
+
 @app.get("/")
 async def root():
     return {"message": "Deep Research Agent API"}
+
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "message": "Deep Research Agent API is running"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104

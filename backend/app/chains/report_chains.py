@@ -1,14 +1,15 @@
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+
 from app.chains.base_chains import base_chain_manager
 
 
 class ReportChains:
     """报告生成链管理器"""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.llm = base_chain_manager.llm
-    
+
     def create_report_generation_chain(self) -> LLMChain:
         """创建报告生成链"""
         report_prompt = PromptTemplate(
@@ -52,14 +53,10 @@ class ReportChains:
 3. 结构清晰，逻辑严密
 4. 提供实用的见解和建议
 5. 使用中文撰写
-"""
+""",
         )
-        
-        return LLMChain(
-            llm=self.llm,
-            prompt=report_prompt,
-            output_key="final_report"
-        )
+
+        return LLMChain(llm=self.llm, prompt=report_prompt, output_key="final_report")
 
 
 # 全局实例
