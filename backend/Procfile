@@ -1,1 +1,1 @@
-web: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+web: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $(python -c "import os;print(os.getenv('PORT',8000))")
