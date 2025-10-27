@@ -36,6 +36,64 @@ api.interceptors.response.use(
   }
 );
 
+// JSON处理工具方法
+const jsonUtils = {
+  // 验证JSON字符串是否有效
+  isValidJSON: (str) => {
+    try {
+      JSON.parse(str);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 尝试修复不完整的JSON
+  tryFixJSON: (jsonStr, onUpdate) => {
+    if (!jsonStr || jsonStr === '[DONE]') return;
+    
+    try {
+      // 尝试添加缺失的引号或括号
+      let fixedJsonStr = jsonStr;
+      
+      // 检查是否缺少结束引号
+      if (!fixedJsonStr.endsWith('"') && fixedJsonStr.includes('"')) {
+        const quoteCount = (fixedJsonStr.match(/"/g) || []).length;
+        if (quoteCount % 2 !== 0) {
+          fixedJsonStr += '"';
+        }
+      }
+      
+      // 检查是否缺少结束括号
+      if (!fixedJsonStr.endsWith('}') && !fixedJsonStr.endsWith(']')) {
+        const openBraceCount = (fixedJsonStr.match(/{/g) || []).length;
+        const closeBraceCount = (fixedJsonStr.match(/}/g) || []).length;
+        const openBracketCount = (fixedJsonStr.match(/\[/g) || []).length;
+        const closeBracketCount = (fixedJsonStr.match(/\]/g) || []).length;
+        
+        if (openBraceCount > closeBraceCount) {
+          fixedJsonStr += '}';
+        } else if (openBracketCount > closeBracketCount) {
+          fixedJsonStr += ']';
+        } else {
+          // 默认添加对象结束符
+          fixedJsonStr += '}';
+        }
+      }
+      
+      if (jsonUtils.isValidJSON(fixedJsonStr)) {
+        const data = JSON.parse(fixedJsonStr);
+        console.warn('已修复不完整的JSON数据');
+        onUpdate(data);
+      } else {
+        console.warn('无法修复JSON数据:', fixedJsonStr);
+      }
+    } catch (fixError) {
+      console.warn('修复JSON数据失败:', fixError);
+    }
+  }
+};
+
 // 研究API
 export const researchAPI = {
   // 开始研究（流式）
@@ -64,16 +122,27 @@ export const researchAPI = {
         
         if (done) break;
         
-        const chunk = decoder.decode(value);
+        const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
         
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              onUpdate(data);
+          if (line.trim() && line.startsWith('data: ')) {
+              try {
+              const jsonStr = line.slice(6).trim();
+              // 检查JSON字符串是否完整
+              if (jsonStr && jsonStr !== '[DONE]') {
+                // 验证JSON格式
+                if (jsonUtils.isValidJSON(jsonStr)) {
+                  const data = JSON.parse(jsonStr);
+                  onUpdate(data);
+                } else {
+                  console.warn('无效的JSON格式，跳过:', jsonStr);
+                }
+              }
             } catch (parseError) {
-              console.warn('解析流数据失败:', parseError);
+              console.warn('解析流数据失败:', parseError, '数据:', line.slice(6));
+              // 尝试修复不完整的JSON
+              jsonUtils.tryFixJSON(line.slice(6).trim(), onUpdate);
             }
           }
         }
