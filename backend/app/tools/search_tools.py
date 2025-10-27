@@ -4,7 +4,7 @@ from langchain.tools import BaseTool
 from pydantic import BaseModel
 from pydantic import Field
 
-from app.services.search_tools import search_tools
+from ..services.search_tools import search_tools
 
 
 class GoogleSearchInput(BaseModel):

@@ -7,12 +7,12 @@ from langchain.agents import create_react_agent
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 
-from app.agents.report_generator import ReportGenerator
-from app.agents.research_executor import ResearchExecutor
-from app.agents.research_planner import ResearchPlanner
-from app.agents.streaming_handler import StreamingManager
-from app.llms.deepseek_llm import DeepSeekLLM
-from app.tools.search_tools import research_tools
+from .report_generator import ReportGenerator
+from .research_executor import ResearchExecutor
+from .research_planner import ResearchPlanner
+from .streaming_handler import StreamingManager
+from ..llms.deepseek_llm import DeepSeekLLM
+from ..tools.search_tools import research_tools
 
 
 class LangChainResearchAgent:

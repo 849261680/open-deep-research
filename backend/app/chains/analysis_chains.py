@@ -2,7 +2,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 
-from app.chains.base_chains import base_chain_manager
+from .base_chains import base_chain_manager
 
 
 class AnalysisChains:

@@ -2,8 +2,8 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from datetime import timezone
 
-from app.chains.research_chains import research_chains
-from app.services.search_tools import search_tools
+from ..chains.research_chains import research_chains
+from ..services.search_tools import search_tools
 
 
 class ResearchExecutor:

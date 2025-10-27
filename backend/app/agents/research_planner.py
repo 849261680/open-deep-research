@@ -1,7 +1,7 @@
 import json
 from collections.abc import Callable
 
-from app.chains.research_chains import research_chains
+from ..chains.research_chains import research_chains
 
 
 class ResearchPlanner:

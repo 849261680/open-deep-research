@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.agents.langchain_research_agent import langchain_research_agent
+from ..agents.langchain_research_agent import langchain_research_agent
 
 router = APIRouter()
 

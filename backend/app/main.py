@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.research import router as research_router
+from .api.research import router as research_router
 
 app = FastAPI(title="Deep Research Agent", version="1.0.0")
 

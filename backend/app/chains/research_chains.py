@@ -3,10 +3,10 @@
 from langchain.chains import SequentialChain
 from langchain.schema import Document
 
-from app.chains.analysis_chains import analysis_chains
-from app.chains.base_chains import base_chain_manager
-from app.chains.planning_chains import planning_chains
-from app.chains.report_chains import report_chains
+from .analysis_chains import analysis_chains
+from .base_chains import base_chain_manager
+from .planning_chains import planning_chains
+from .report_chains import report_chains
 
 
 class ResearchChains:

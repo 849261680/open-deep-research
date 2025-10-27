@@ -1,7 +1,7 @@
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from app.llms.deepseek_llm import DeepSeekLLM
+from ..llms.deepseek_llm import DeepSeekLLM
 
 
 class BaseChainManager:

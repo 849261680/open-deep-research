@@ -68,7 +68,7 @@ class StreamingManager:
         try:
             # 直接调用AI生成计划，不显示中间步骤
 
-            from app.chains.research_chains import research_chains
+            from ..chains.research_chains import research_chains
 
             planning_chain = research_chains.create_planning_chain()
             result = await planning_chain.ainvoke({"query": query})

@@ -4,7 +4,7 @@ from langchain_core.language_models.llms import BaseLLM
 from langchain_core.outputs import Generation
 from langchain_core.outputs import LLMResult
 
-from app.services.deepseek_service import deepseek_service
+from ..services.deepseek_service import deepseek_service
 
 
 class DeepSeekLLM(BaseLLM):
