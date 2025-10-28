@@ -60,22 +60,27 @@ function App() {
       
     } catch (err) {
       console.error('研究失败:', err);
-      setError('研究过程中发生错误: ' + err.message);
       
-      // 如果流式API失败，尝试非流式API
-      try {
-        console.log('尝试非流式API...');
-        await researchAPI.startResearch(query);
-        setResearchData({
-          query: query,
-          plan: [],
-          results: [],
-          report: `# ${query} - 研究报告\n\n研究已完成，但详细信息暂时无法显示。`,
-          timestamp: new Date().toISOString()
-        });
-      } catch (fallbackErr) {
-        console.error('非流式API也失败:', fallbackErr);
-        setError('无法连接到研究服务，请检查网络连接或稍后重试。');
+      // 根据错误类型显示不同的错误信息
+      let errorMessage = '研究过程中发生错误: ' + err.message;
+      
+      if (err.message.includes('网络连接失败') || 
+          err.message.includes('请求超时') ||
+          err.message.includes('ERR_CONNECTION_CLOSED')) {
+        errorMessage = '网络连接不稳定，请检查网络连接后重试';
+        
+        // 如果是网络错误，尝试非流式API
+        try {
+          console.log('网络错误，尝试非流式API...');
+          const result = await researchAPI.startResearch(query);
+          setResearchData(result);
+          setError(null);
+        } catch (fallbackErr) {
+          console.error('非流式API也失败:', fallbackErr);
+          setError('无法连接到研究服务，请检查网络连接或稍后重试。');
+        }
+      } else {
+        setError(errorMessage);
       }
     } finally {
       setIsResearching(false);

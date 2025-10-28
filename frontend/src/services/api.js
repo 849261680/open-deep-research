@@ -1,9 +1,14 @@
 import axios from 'axios';
 import errorHandler from './errorHandler';
 
-// API基础配置
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// API基础配置 - 优先使用生产环境配置，然后是本地配置
+const API_BASE_URL = process.env.REACT_APP_API_URL || 
+                    (window.location.hostname === 'localhost' ? 'http://localhost:8000' : 
+                     window.location.origin.includes('railway.app') ? 
+                     `${window.location.protocol}//${window.location.hostname}` : 
+                     'http://localhost:8000');
 console.log('API_BASE_URL:', API_BASE_URL);
+console.log('当前域名:', window.location.hostname);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -51,17 +56,24 @@ api.interceptors.response.use(
 export const researchAPI = {
   // 开始研究（流式）
   startResearchStream: async (query, onUpdate) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/research`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Connection': 'keep-alive',
         },
         body: JSON.stringify({
           query: query,
           stream: true
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -127,8 +139,20 @@ export const researchAPI = {
         }
       }
     } catch (error) {
-      console.error('流式请求失败:', error);
-      throw error;
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        console.error('流式请求超时:', error);
+        throw new Error('请求超时，请重试');
+      } else if (error.message.includes('Failed to fetch') || 
+                 error.message.includes('NetworkError') ||
+                 error.message.includes('ERR_CONNECTION_CLOSED')) {
+        console.error('网络连接错误:', error);
+        throw new Error('网络连接失败，请检查网络连接或稍后重试');
+      } else {
+        console.error('流式请求失败:', error);
+        throw error;
+      }
     }
   },
 
