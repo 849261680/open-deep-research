@@ -7,12 +7,12 @@ from langchain.agents import create_react_agent
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 
+from ..llms.deepseek_llm import DeepSeekLLM
+from ..tools.search_tools import research_tools
 from .report_generator import ReportGenerator
 from .research_executor import ResearchExecutor
 from .research_planner import ResearchPlanner
 from .streaming_handler import StreamingManager
-from ..llms.deepseek_llm import DeepSeekLLM
-from ..tools.search_tools import research_tools
 
 
 class LangChainResearchAgent:
@@ -254,7 +254,7 @@ class LangChainResearchAgent:
             }
             self.research_history.append(research_record)
 
-            print(f"💾 [后端调试] 研究记录已创建，准备发送report_complete事件")
+            print("💾 [后端调试] 研究记录已创建，准备发送report_complete事件")
             print(f"📋 [后端调试] 研究记录内容: {research_record}")
 
             yield {

@@ -1,6 +1,5 @@
 import asyncio
 import os
-from typing import Any
 
 import requests
 import urllib3
@@ -19,7 +18,7 @@ class SearchTools:
 
     async def tavily_search(
         self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """使用Tavily搜索"""
         print(f"🔍 开始 Tavily 搜索: {query}")
 
@@ -49,7 +48,7 @@ class SearchTools:
 
     def _sync_tavily_search(
         self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """同步版本的Tavily搜索，优化内容长度"""
         print(f"🔄 执行同步 Tavily 搜索: {query}")
         try:
@@ -101,7 +100,7 @@ class SearchTools:
 
     async def google_search(
         self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """使用SerpAPI进行Google搜索"""
         if not self.serpapi_key:
             # 如果没有SerpAPI密钥，使用Tavily作为替代
@@ -143,7 +142,7 @@ class SearchTools:
 
     async def duckduckgo_search(
         self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """DuckDuckGo搜索 - 免费备选方案"""
         print(f"🔍 开始 DuckDuckGo 搜索: {query}")
 
@@ -168,7 +167,7 @@ class SearchTools:
 
     def _sync_duckduckgo_search(
         self, query: str, num_results: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """同步版本的DuckDuckGo搜索 - 免费备选方案"""
         try:
             from duckduckgo_search import DDGS
@@ -194,21 +193,21 @@ class SearchTools:
 
     async def wikipedia_search(
         self, query: str, num_results: int = 5
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Wikipedia搜索已禁用，避免超时问题"""
         print(f"⚠️ Wikipedia 搜索已禁用以提高性能，查询: {query}")
         return []
 
     def _sync_wikipedia_search(
         self, query: str, num_results: int = 5
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Wikipedia搜索已禁用"""
         print(f"⚠️ 同步 Wikipedia 搜索已禁用，查询: {query}")
         return []
 
     async def academic_search(
         self, query: str, num_results: int = 5
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """学术搜索，优先使用 Tavily"""
         if self.tavily_api_key:
             print(f"🎓 使用 Tavily 进行学术搜索: {query}")
@@ -219,7 +218,9 @@ class SearchTools:
         academic_query = f"site:scholar.google.com OR site:arxiv.org OR site:researchgate.net {query}"
         return await self.google_search(academic_query, num_results)
 
-    async def comprehensive_search(self, query: str) -> dict[str, list[dict[str, Any]]]:
+    async def comprehensive_search(
+        self, query: str
+    ) -> dict[str, list[dict[str, object]]]:
         """综合搜索，优先使用 Tavily，避免超时问题"""
         results = {}
 

@@ -29,7 +29,9 @@ async def research_options():
 
 
 @router.post("/research", response_model=None)
-async def start_research(request: ResearchRequest):
+async def start_research(
+    request: ResearchRequest,
+) -> StreamingResponse | ResearchResponse:
     """开始研究任务"""
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="研究问题不能为空")
