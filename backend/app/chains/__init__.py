@@ -12,5 +12,5 @@ __all__ = [
     "planning_chains",
     "analysis_chains",
     "report_chains",
-    "research_chains"
+    "research_chains",
 ]

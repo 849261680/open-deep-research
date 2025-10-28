@@ -9,30 +9,35 @@ from ..services.search_tools import search_tools
 
 class GoogleSearchInput(BaseModel):
     """Input for Google Search tool."""
+
     query: str = Field(description="Search query to look up")
     num_results: int = Field(default=10, description="Number of results to return")
 
 
 class DuckDuckGoSearchInput(BaseModel):
     """Input for DuckDuckGo Search tool."""
+
     query: str = Field(description="Search query to look up")
     num_results: int = Field(default=10, description="Number of results to return")
 
 
 class WikipediaSearchInput(BaseModel):
     """Input for Wikipedia Search tool."""
+
     query: str = Field(description="Search query to look up")
     num_results: int = Field(default=5, description="Number of results to return")
 
 
 class TavilySearchInput(BaseModel):
     """Input for Tavily Search tool."""
+
     query: str = Field(description="Search query to look up")
     num_results: int = Field(default=10, description="Number of results to return")
 
 
 class ComprehensiveSearchInput(BaseModel):
     """Input for Comprehensive Search tool."""
+
     query: str = Field(description="Search query to look up")
 
 
@@ -51,14 +56,35 @@ class GoogleSearchTool(BaseTool):
     def _run(self, query: str, num_results: int = 10) -> str:
         """Search Google synchronously."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "google"}], ensure_ascii=False)
+                return json.dumps(
+                    [
+                        {
+                            "title": "搜索功能暂时不可用",
+                            "link": "",
+                            "snippet": "请使用异步调用",
+                            "source": "google",
+                        }
+                    ],
+                    ensure_ascii=False,
+                )
             return loop.run_until_complete(self._arun(query, num_results))
         except RuntimeError:
-            return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "google"}], ensure_ascii=False)
+            return json.dumps(
+                [
+                    {
+                        "title": "搜索功能暂时不可用",
+                        "link": "",
+                        "snippet": "请使用异步调用",
+                        "source": "google",
+                    }
+                ],
+                ensure_ascii=False,
+            )
 
 
 class TavilySearchTool(BaseTool):
@@ -76,14 +102,35 @@ class TavilySearchTool(BaseTool):
     def _run(self, query: str, num_results: int = 10) -> str:
         """Search Tavily synchronously."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "tavily"}], ensure_ascii=False)
+                return json.dumps(
+                    [
+                        {
+                            "title": "搜索功能暂时不可用",
+                            "link": "",
+                            "snippet": "请使用异步调用",
+                            "source": "tavily",
+                        }
+                    ],
+                    ensure_ascii=False,
+                )
             return loop.run_until_complete(self._arun(query, num_results))
         except RuntimeError:
-            return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "tavily"}], ensure_ascii=False)
+            return json.dumps(
+                [
+                    {
+                        "title": "搜索功能暂时不可用",
+                        "link": "",
+                        "snippet": "请使用异步调用",
+                        "source": "tavily",
+                    }
+                ],
+                ensure_ascii=False,
+            )
 
 
 class DuckDuckGoSearchTool(BaseTool):
@@ -101,14 +148,35 @@ class DuckDuckGoSearchTool(BaseTool):
     def _run(self, query: str, num_results: int = 10) -> str:
         """Search DuckDuckGo synchronously."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "duckduckgo"}], ensure_ascii=False)
+                return json.dumps(
+                    [
+                        {
+                            "title": "搜索功能暂时不可用",
+                            "link": "",
+                            "snippet": "请使用异步调用",
+                            "source": "duckduckgo",
+                        }
+                    ],
+                    ensure_ascii=False,
+                )
             return loop.run_until_complete(self._arun(query, num_results))
         except RuntimeError:
-            return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "duckduckgo"}], ensure_ascii=False)
+            return json.dumps(
+                [
+                    {
+                        "title": "搜索功能暂时不可用",
+                        "link": "",
+                        "snippet": "请使用异步调用",
+                        "source": "duckduckgo",
+                    }
+                ],
+                ensure_ascii=False,
+            )
 
 
 class WikipediaSearchTool(BaseTool):
@@ -126,14 +194,35 @@ class WikipediaSearchTool(BaseTool):
     def _run(self, query: str, num_results: int = 5) -> str:
         """Search Wikipedia synchronously."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "wikipedia"}], ensure_ascii=False)
+                return json.dumps(
+                    [
+                        {
+                            "title": "搜索功能暂时不可用",
+                            "link": "",
+                            "snippet": "请使用异步调用",
+                            "source": "wikipedia",
+                        }
+                    ],
+                    ensure_ascii=False,
+                )
             return loop.run_until_complete(self._arun(query, num_results))
         except RuntimeError:
-            return json.dumps([{"title": "搜索功能暂时不可用", "link": "", "snippet": "请使用异步调用", "source": "wikipedia"}], ensure_ascii=False)
+            return json.dumps(
+                [
+                    {
+                        "title": "搜索功能暂时不可用",
+                        "link": "",
+                        "snippet": "请使用异步调用",
+                        "source": "wikipedia",
+                    }
+                ],
+                ensure_ascii=False,
+            )
 
 
 class ComprehensiveSearchTool(BaseTool):
@@ -151,19 +240,24 @@ class ComprehensiveSearchTool(BaseTool):
     def _run(self, query: str) -> str:
         """Perform comprehensive search synchronously."""
         import asyncio
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps({"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False)
+                return json.dumps(
+                    {"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False
+                )
             return loop.run_until_complete(self._arun(query))
         except RuntimeError:
-            return json.dumps({"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False)
+            return json.dumps(
+                {"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False
+            )
 
 
 # 导出所有工具，只保留高性能工具
 research_tools = [
     TavilySearchTool(),
     ComprehensiveSearchTool(),
-    GoogleSearchTool()  # 作为备用
+    GoogleSearchTool(),  # 作为备用
 ]
