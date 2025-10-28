@@ -1,0 +1,42 @@
+{
+    // Ruff 扩展配置
+    "ruff.enable": true,
+    "ruff.importStrategy": "fromEnvironment",
+    "ruff.configuration": "./pyproject.toml",
+    "ruff.fixOnSave": true,
+    "ruff.organizeImports": true,
+    
+    // Python 配置
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        }
+    },
+    
+    // 诊断配置
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportUnusedImport": "error",
+        "reportUndefinedVariable": "error"
+    },
+    
+    // 性能和优化
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/*.pyc": true,
+        "**/venv/**": true,
+        "**/.venv/**": true,
+        "**/.ruff_cache/**": true
+    },
+    
+    // Python 分析配置
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic"
+}

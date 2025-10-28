@@ -30,10 +30,12 @@ yarn-error.log*
 *.env.production.local
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
+
+# Ruff cache
+.ruff_cache/
 
 # OS
 .DS_Store

@@ -1,0 +1,11 @@
+{
+    "recommendations": [
+        "charliermarsh.ruff",           // Ruff 官方扩展
+        "ms-python.python",             // Python 扩展
+        "ms-python.black-formatter",    // Black 格式化（备用）
+        "ms-python.flake8",            // Flake8（备用）
+        "ms-python.mypy-type-checker",  // MyPy 类型检查
+        "bradlc.vscode-tailwindcss",   // Tailwind CSS（前端需要）
+        "esbenp.prettier-vscode"        // Prettier（前端格式化）
+    ]
+}
