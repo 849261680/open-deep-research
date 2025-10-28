@@ -68,6 +68,7 @@ ignore = [
     "ANN401",  # dynamically typed expressions (typing.Any) are disallowed
     "PT001",  # use @pytest.fixture without parentheses
     "PT023",  # use @pytest.fixture over @pytest.fixture()
+    "ICN003",  # members of typing should not be imported explicitly - we need Any for type annotations
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -99,3 +100,48 @@ banned-from = ["typing"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+# Ty 类型检查器配置
+[tool.ty]
+# 指定要检查的目录
+files = ["backend/app"]
+
+# 严格模式选项
+strict = false
+
+# Python 版本
+python-version = "3.10"
+
+# 跟随导入检查
+follow-imports = "normal"
+
+# 忽略缺失导入
+ignore-missing-imports = true
+
+# 显示错误上下文
+show-error-context = true
+
+# 显示错误代码
+show-error-codes = true
+
+# 漂亮的错误输出
+pretty = true
+
+# 排除的路径
+exclude = [
+    "tests/",
+    "scripts/",
+    "migrations/",
+    "__pycache__/",
+    ".venv/",
+    "venv/",
+]
+
+# 每个文件的特定配置
+[[tool.ty.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.ty.overrides]]
+module = "scripts.*"
+disallow_untyped_defs = false

@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from collections.abc import Callable
 from datetime import datetime
 from datetime import timezone
 
@@ -25,11 +26,11 @@ class LangChainResearchAgent:
     """
 
     def __init__(self) -> None:
-        self.llm = None
-        self.memory = None
+        self.llm: DeepSeekLLM | None = None
+        self.memory: ConversationBufferMemory | None = None
         self.tools = research_tools
-        self.agent_executor = None
-        self.research_history = []
+        self.agent_executor: AgentExecutor | None = None
+        self.research_history: list[dict[str, object]] = []
         self._initialized = False
 
         # 初始化功能模块 - 为什么使用组合模式：降低耦合度，提高代码复用性
@@ -96,6 +97,8 @@ class LangChainResearchAgent:
         )
 
         # 创建ReAct代理
+        if self.llm is None:
+            raise ValueError("LLM must be initialized before creating agent")
         agent = create_react_agent(llm=self.llm, tools=self.tools, prompt=prompt)
 
         # 创建代理执行器
@@ -121,7 +124,7 @@ class LangChainResearchAgent:
         return ", ".join([tool.name for tool in self.tools])
 
     async def plan_research(
-        self, query: str, callback: object | None = None
+        self, query: str, callback: Callable | None = None
     ) -> list[dict[str, object]]:
         """使用链制定研究计划，支持进度回调
 
@@ -212,16 +215,28 @@ class LangChainResearchAgent:
 
         # 2. 执行研究步骤
         research_results = []
+        # 确保 research_plan 是可迭代的列表
+        if not isinstance(research_plan, list):
+            research_plan = []
         for step in research_plan:
+            # 确保 step 是字典类型
+            if not isinstance(step, dict):
+                continue
+
+            # 安全地转换为预期的字典类型
+            step_dict = dict(step)
+
             yield {
                 "type": "step_start",
-                "message": f"开始执行：{step['title']}",
-                "data": step,
+                "message": f"开始执行：{step_dict.get('title', '未知步骤')}",
+                "data": step_dict,
             }
 
             # 执行带进度更新的研究步骤
             step_result = None
-            async for update in self._execute_research_step_with_updates(step, query):
+            async for update in self._execute_research_step_with_updates(
+                step_dict, query
+            ):
                 yield update
                 if update.get("type") == "step_complete":
                     step_result = update["data"]

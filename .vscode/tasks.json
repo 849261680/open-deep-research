@@ -1,0 +1,103 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "ty: Check All Files",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/ty",
+            "args": [
+                "check",
+                "backend/app"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": {
+                "owner": "ty",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+(.+)\\s+\\[(.+)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5,
+                    "code": 6
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "runOptions": {
+                "runOn": "default"
+            }
+        },
+        {
+            "label": "ty: Check Current File",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/ty",
+            "args": [
+                "check",
+                "${file}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": {
+                "owner": "ty",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+(.+)\\s+\\[(.+)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5,
+                    "code": 6
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "ty: Watch Mode",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/ty",
+            "args": [
+                "check",
+                "backend/app",
+                "--watch"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": {
+                "owner": "ty",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+(.+)\\s+\\[(.+)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5,
+                    "code": 6
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^Checking",
+                    "endsPattern": "^(Found \\d+ error|No errors found)"
+                }
+            },
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

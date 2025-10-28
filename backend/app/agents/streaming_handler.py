@@ -37,7 +37,9 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         - 提升用户体验，增加透明度
         """
         if self.callback_func:
-            self.callback_func(f"🔧 使用工具: {action.tool}")
+            # 安全地获取工具名称，处理可能的属性不存在情况
+            tool_name = getattr(action, "tool", "未知工具")
+            self.callback_func(f"🔧 使用工具: {tool_name}")
 
     def on_agent_finish(self, finish: object, **kwargs) -> None:
         """当代理完成时调用

@@ -5,7 +5,7 @@
     "ruff.configuration": "./pyproject.toml",
     "ruff.fixOnSave": true,
     "ruff.organizeImports": true,
-    
+
     // Python 配置
     "python.defaultInterpreterPath": "./.venv/bin/python",
     "[python]": {
@@ -16,13 +16,20 @@
             "source.organizeImports": "explicit"
         }
     },
-    
+
+    // 禁用 Pylance 的类型检查，改用 ty
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticMode": "openFilesOnly",
+
     // 诊断配置
     "python.analysis.diagnosticSeverityOverrides": {
         "reportUnusedImport": "error",
         "reportUndefinedVariable": "error"
     },
-    
+
+    // Python 分析配置
+    "python.analysis.autoImportCompletions": true,
+
     // 性能和优化
     "files.watcherExclude": {
         "**/.git/objects/**": true,
@@ -32,11 +39,14 @@
         "**/*.pyc": true,
         "**/venv/**": true,
         "**/.venv/**": true,
-        "**/.ruff_cache/**": true
+        "**/.ruff_cache/**": true,
+        "**/.ty_cache/**": true
     },
-    
-    // Python 分析配置
-    "python.analysis.diagnosticMode": "workspace",
-    "python.analysis.autoImportCompletions": true,
-    "python.analysis.typeCheckingMode": "basic"
+
+    // 在启动时自动运行 ty watch 模式
+    "tasks.autoDetect": "on",
+
+    // 问题面板配置
+    "problems.autoReveal": true,
+    "problems.showCurrentInStatus": true
 }
