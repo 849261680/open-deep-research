@@ -1,31 +1,44 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { 
-  FileText, 
-  Clock, 
-  CheckCircle, 
-  ChevronDown, 
-  ChevronRight, 
-  Download,
-  Share2 
-} from 'lucide-react';
+import { FileText, CheckCircle } from 'lucide-react';
+import ResultHeader from './ResultHeader';
+import CollapsibleSection from './CollapsibleSection';
 
+/**
+ * ResearchResults - 极简研究结果展示
+ *
+ * 显示最终的研究报告和研究过程
+ */
 const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
-  const [expandedSteps, setExpandedSteps] = useState(new Set());
 
-  const toggleStep = (stepIndex) => {
-    const newExpanded = new Set(expandedSteps);
-    if (newExpanded.has(stepIndex)) {
-      newExpanded.delete(stepIndex);
-    } else {
-      newExpanded.add(stepIndex);
-    }
-    setExpandedSteps(newExpanded);
+  const handleDownload = () => {
+    // 创建 Markdown 文件下载
+    const blob = new Blob([data.report], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `研究报告-${data.query}-${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const formatDate = (timestamp) => {
-    return new Date(timestamp).toLocaleString('zh-CN');
+  const handleShare = () => {
+    // 复制报告到剪贴板
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(data.report).then(() => {
+        alert('报告已复制到剪贴板');
+      });
+    } else {
+      alert('您的浏览器不支持剪贴板功能');
+    }
+  };
+
+  const handleRerun = () => {
+    // 重新运行研究（可以通过父组件传递的回调实现）
+    alert('重新运行功能即将上线');
   };
 
   const tabs = [
@@ -34,41 +47,33 @@ const ResearchResults = ({ data }) => {
   ];
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white mb-1">
-              研究完成
-            </h2>
-            <p className="text-primary-100">
-              主题: {data.query}
-            </p>
-          </div>
-          <div className="flex items-center space-x-2 text-primary-100">
-            <Clock className="h-4 w-4" />
-            <span className="text-sm">{formatDate(data.timestamp)}</span>
-          </div>
-        </div>
-      </div>
+    <div>
+      {/* 头部 */}
+      <ResultHeader
+        query={data.query}
+        timestamp={data.timestamp}
+        status="completed"
+        onDownload={handleDownload}
+        onShare={handleShare}
+        onRerun={handleRerun}
+      />
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="flex space-x-8 px-6">
+      {/* Tab 导航 */}
+      <div className="border-b border-border-light mb-lg">
+        <nav className="flex gap-lg">
           {tabs.map((tab) => {
             const IconComponent = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 py-4 border-b-2 font-medium text-sm transition-colors ${
+                className={`flex items-center gap-2 pb-sm border-b-2 font-medium text-sm transition-all duration-fast ${
                   activeTab === tab.id
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-accent text-accent'
+                    : 'border-transparent text-text-secondary hover:text-text-primary'
                 }`}
               >
-                <IconComponent className="h-4 w-4" />
+                <IconComponent className="w-4 h-4" />
                 <span>{tab.label}</span>
               </button>
             );
@@ -76,94 +81,83 @@ const ResearchResults = ({ data }) => {
         </nav>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
+      {/* 内容区域 */}
+      <div>
+        {/* 研究报告 Tab */}
         {activeTab === 'report' && (
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">
-                研究报告
-              </h3>
-              <div className="flex space-x-2">
-                <button className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                  <Download className="h-4 w-4" />
-                  <span>下载</span>
-                </button>
-                <button className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                  <Share2 className="h-4 w-4" />
-                  <span>分享</span>
-                </button>
-              </div>
-            </div>
-            
-            <div className="markdown-content">
-              <ReactMarkdown>{data.report}</ReactMarkdown>
-            </div>
+          <div className="markdown-content">
+            <ReactMarkdown>{data.report}</ReactMarkdown>
           </div>
         )}
 
+        {/* 研究过程 Tab */}
         {activeTab === 'process' && (
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">
-              研究过程详情
-            </h3>
-            
-            {/* Research Plan */}
-            <div className="mb-8">
-              <h4 className="text-md font-medium text-gray-800 mb-4">研究计划</h4>
-              <div className="space-y-3">
-                {data.plan.map((step, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 w-6 h-6 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-sm font-medium">
+          <div className="space-y-lg">
+            {/* 研究计划 */}
+            <div>
+              <h3 className="text-lg font-semibold text-text-primary mb-md">
+                研究计划
+              </h3>
+              <div className="space-y-sm">
+                {data.plan && data.plan.map((step, index) => (
+                  <div key={index} className="flex items-start gap-3 p-sm bg-background-secondary rounded-md">
+                    <div className="flex-shrink-0 w-6 h-6 bg-accent/10 text-accent rounded-full flex items-center justify-center text-sm font-medium">
                       {step.step}
                     </div>
-                    <div>
-                      <h5 className="font-medium text-gray-900">{step.title}</h5>
-                      <p className="text-sm text-gray-600">{step.description}</p>
+                    <div className="flex-1">
+                      <h5 className="font-medium text-text-primary">{step.title}</h5>
+                      <p className="text-sm text-text-secondary mt-0.5">{step.description}</p>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Research Results */}
+            {/* 执行结果 */}
             <div>
-              <h4 className="text-md font-medium text-gray-800 mb-4">执行结果</h4>
-              <div className="space-y-4">
-                {data.results.map((result, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg">
-                    <button
-                      onClick={() => toggleStep(index)}
-                      className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <CheckCircle className="h-5 w-5 text-green-500" />
-                        <div>
-                          <h5 className="font-medium text-gray-900">
-                            {result.title}
-                          </h5>
-                          <p className="text-sm text-gray-600">
-                            {result.status === 'completed' ? '已完成' : '进行中'}
-                          </p>
-                        </div>
-                      </div>
-                      {expandedSteps.has(index) ? (
-                        <ChevronDown className="h-5 w-5 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="h-5 w-5 text-gray-400" />
-                      )}
-                    </button>
-                    
-                    {expandedSteps.has(index) && (
-                      <div className="px-4 pb-4 border-t border-gray-100">
-                        <div className="pt-4">
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            {result.analysis || result.result || '暂无详细信息'}
-                          </p>
+              <h3 className="text-lg font-semibold text-text-primary mb-md">
+                执行结果
+              </h3>
+              <div className="space-y-sm">
+                {data.results && data.results.map((result, index) => (
+                  <CollapsibleSection
+                    key={index}
+                    title={result.title}
+                    icon={<CheckCircle className="w-4 h-4" />}
+                    badge={result.status === 'completed' ? '已完成' : '进行中'}
+                    defaultOpen={false}
+                  >
+                    <div className="text-sm text-text-secondary leading-relaxed">
+                      {result.analysis || result.result || '暂无详细信息'}
+                    </div>
+
+                    {/* 如果有搜索源，显示它们 */}
+                    {result.search_sources && result.search_sources.length > 0 && (
+                      <div className="mt-md pt-md border-t border-border-light">
+                        <p className="text-xs font-medium text-text-secondary mb-xs">
+                          信息源 ({result.search_sources.length}):
+                        </p>
+                        <div className="space-y-xs">
+                          {result.search_sources.slice(0, 5).map((source, idx) => (
+                            <a
+                              key={idx}
+                              href={source.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-accent hover:text-accent-dark underline decoration-1 underline-offset-2 transition-colors duration-fast"
+                            >
+                              {source.title || source.link}
+                            </a>
+                          ))}
+                          {result.search_sources.length > 5 && (
+                            <p className="text-xs text-text-tertiary">
+                              还有 {result.search_sources.length - 5} 个信息源...
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
-                  </div>
+                  </CollapsibleSection>
                 ))}
               </div>
             </div>
