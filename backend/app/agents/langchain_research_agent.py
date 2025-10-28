@@ -228,29 +228,55 @@ class LangChainResearchAgent:
                     research_results.append(step_result)
 
         # 3. 生成最终报告
+        print("🔄 [后端调试] 开始生成最终报告...")
         yield {
             "type": "report_generating",
             "message": "正在生成最终研究报告...",
             "data": None,
         }
 
-        final_report = await self.generate_final_report(research_results, query)
+        try:
+            print(f"📊 [后端调试] 研究结果数量: {len(research_results)}")
+            print(f"📊 [后端调试] 研究结果内容: {research_results}")
 
-        # 保存到历史记录 - 为什么保存历史：便于用户查看和管理之前的研究
-        research_record = {
-            "query": query,
-            "plan": research_plan,
-            "results": research_results,
-            "report": final_report,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        self.research_history.append(research_record)
+            final_report = await self.generate_final_report(research_results, query)
 
-        yield {
-            "type": "report_complete",
-            "message": "研究完成",
-            "data": research_record,
-        }
+            print(f"✅ [后端调试] 报告生成成功，长度: {len(final_report)} 字符")
+            print(f"📝 [后端调试] 报告内容预览: {final_report[:200]}...")
+
+            # 保存到历史记录 - 为什么保存历史：便于用户查看和管理之前的研究
+            research_record = {
+                "query": query,
+                "plan": research_plan,
+                "results": research_results,
+                "report": final_report,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            self.research_history.append(research_record)
+
+            print(f"💾 [后端调试] 研究记录已创建，准备发送report_complete事件")
+            print(f"📋 [后端调试] 研究记录内容: {research_record}")
+
+            yield {
+                "type": "report_complete",
+                "message": "研究完成",
+                "data": research_record,
+            }
+
+            print("🎯 [后端调试] report_complete事件已发送")
+
+        except Exception as e:
+            print(f"❌ [后端调试] 报告生成失败: {e}")
+            import traceback
+
+            print(f"📋 [后端调试] 错误详情: {traceback.format_exc()}")
+
+            # 发送错误事件
+            yield {
+                "type": "error",
+                "message": f"报告生成失败: {str(e)}",
+                "data": None,
+            }
 
     def get_research_history(self) -> list[dict[str, object]]:
         """获取研究历史

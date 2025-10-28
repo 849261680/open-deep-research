@@ -1,6 +1,5 @@
 import axios from 'axios';
 import errorHandler from './errorHandler';
-import JSONUtils from './jsonUtils';
 
 // API基础配置
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -106,10 +105,13 @@ export const researchAPI = {
           try {
             const data = JSON.parse(candidate);
             pendingData = '';
+            console.log('🔍 [API调试] 成功解析JSON数据:', data);
+            console.log('🔍 [API调试] 数据类型:', data.type);
             onUpdate(data);
-          } catch {
+          } catch (error) {
             pendingData = candidate;
-            console.warn('等待更多数据以完成JSON解析');
+            console.warn('⚠️ [API调试] JSON解析失败，等待更多数据:', error);
+            console.warn('⚠️ [API调试] 待解析数据:', candidate);
           }
         }
       }
@@ -117,9 +119,11 @@ export const researchAPI = {
       if (pendingData) {
         try {
           const data = JSON.parse(pendingData);
+          console.log('🔍 [API调试] 流结束时成功解析剩余数据:', data);
           onUpdate(data);
-        } catch {
-          console.warn('流结束时仍存在无法解析的JSON片段:', pendingData);
+        } catch (error) {
+          console.warn('❌ [API调试] 流结束时仍存在无法解析的JSON片段:', pendingData);
+          console.warn('❌ [API调试] 解析错误:', error);
         }
       }
     } catch (error) {

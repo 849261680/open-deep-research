@@ -39,12 +39,22 @@ function App() {
       
       // 使用流式API
       await researchAPI.startResearchStream(query, (update) => {
-        console.log('收到更新:', update);
+        console.log('🔍 [前端调试] 收到更新:', update);
+        console.log('🔍 [前端调试] 更新类型:', update.type);
+        console.log('🔍 [前端调试] 更新数据:', update.data);
+        
         setStreamingData(prev => [...prev, update]);
         
         // 如果研究完成，设置最终数据
         if (update.type === 'report_complete') {
+          console.log('🎯 [前端调试] 检测到report_complete事件，设置研究数据');
+          console.log('🎯 [前端调试] 研究数据内容:', update.data);
           setResearchData(update.data);
+        } else if (update.type === 'error') {
+          console.log('❌ [前端调试] 检测到error事件，显示错误信息');
+          setError(update.message);
+        } else {
+          console.log('📝 [前端调试] 非完成事件，继续等待');
         }
       });
       
