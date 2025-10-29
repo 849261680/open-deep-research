@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, Sparkles } from 'lucide-react';
+import Button from './Button';
 
 /**
  * EmptyState - 空状态欢迎页面
@@ -8,6 +9,7 @@ import { Search, Sparkles } from 'lucide-react';
  * 提供示例问题卡片，引导用户开始使用
  */
 const EmptyState = ({ onExampleClick }) => {
+  const [query, setQuery] = useState('');
   // 示例问题
   const exampleQuestions = [
     {
@@ -41,9 +43,52 @@ const EmptyState = ({ onExampleClick }) => {
       <h1 className="text-3xl font-bold text-text-primary mb-sm text-balance text-center">
         开始深度研究
       </h1>
-      <p className="text-base text-text-secondary mb-2xl text-center max-w-md">
+      <p className="text-base text-text-secondary mb-lg text-center max-w-md">
         输入任何问题，获得专业的研究报告
       </p>
+
+      {/* 搜索输入框 */}
+      <div className="w-full max-w-2xl mb-2xl">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (query.trim()) {
+              onExampleClick(query.trim());
+            }
+          }}
+          className="flex gap-3"
+        >
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (query.trim()) {
+                    onExampleClick(query.trim());
+                  }
+                }
+              }}
+              placeholder="输入你想研究的主题..."
+              className="w-full px-lg py-4 text-base border border-border-light rounded-lg
+                bg-background-primary text-text-primary placeholder-text-tertiary
+                focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent
+                transition-all duration-fast shadow-sm hover:shadow-md"
+            />
+          </div>
+          <Button
+            type="submit"
+            variant="primary"
+            size="large"
+            disabled={!query.trim()}
+            icon={<Search className="w-4 h-4" />}
+          >
+            开始研究
+          </Button>
+        </form>
+      </div>
 
       {/* 示例问题卡片 */}
       <div className="w-full max-w-2xl">
@@ -66,11 +111,6 @@ const EmptyState = ({ onExampleClick }) => {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* 提示文本 */}
-      <div className="mt-2xl text-xs text-text-tertiary text-center">
-        <p>每次研究通常需要 30-60 秒完成</p>
       </div>
     </div>
   );
