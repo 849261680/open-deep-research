@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 
 import requests
 from dotenv import load_dotenv
+from requests.exceptions import Timeout
 
 load_dotenv()
 
@@ -66,7 +67,7 @@ class DeepSeekService:
                     print(f"❌ [DeepSeek调试] API 错误响应: {response.text}")
 
                 break  # 成功则跳出循环
-            except requests.exceptions.Timeout:
+            except Timeout:
                 if attempt == max_retries:
                     print("⏰ [DeepSeek调试] API 请求超时，已重试多次")
                     return "API请求超时，请稍后重试"
