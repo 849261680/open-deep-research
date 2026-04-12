@@ -3,12 +3,13 @@ import os
 
 import requests
 import urllib3
-from dotenv import load_dotenv
+
+from ..utils.env import load_project_env
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-load_dotenv()
+load_project_env()
 
 
 class SearchTools:

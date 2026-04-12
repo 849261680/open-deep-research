@@ -13,6 +13,7 @@ allowed_origins = [
     "http://localhost:3001",  # 备用端口
     "https://rsgpt.vercel.app",  # Vercel生产域名
 ]
+allowed_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
 # 从环境变量添加生产域名
 frontend_url = os.getenv("FRONTEND_URL")
@@ -28,6 +29,7 @@ if vercel_url:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

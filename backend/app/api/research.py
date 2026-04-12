@@ -121,7 +121,7 @@ async def resume_research(
                 final_payload = dict(update["data"])
 
         return ResearchResponse(
-            query=request.task_id,
+            query=final_payload.get("query", "") if final_payload else "",
             status="completed",
             data=final_payload or {"updates": results},
         )

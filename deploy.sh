@@ -33,22 +33,22 @@ check_env() {
 check_python_deps() {
     echo "🐍 检查Python依赖..."
     
-    if [ ! -f "backend/requirements.txt" ]; then
-        echo "❌ backend/requirements.txt 不存在"
+    if [ ! -f "pyproject.toml" ] || [ ! -f "uv.lock" ]; then
+        echo "❌ pyproject.toml 或 uv.lock 不存在"
         return 1
     fi
     
-    echo "✅ requirements.txt 存在"
+    echo "✅ uv 依赖配置存在"
     
     # 检查关键依赖
-    if grep -q "fastapi" backend/requirements.txt; then
+    if grep -q "fastapi" pyproject.toml; then
         echo "✅ FastAPI 依赖存在"
     else
         echo "❌ FastAPI 依赖缺失"
         return 1
     fi
     
-    if grep -q "langchain" backend/requirements.txt; then
+    if grep -q "langchain" pyproject.toml; then
         echo "✅ LangChain 依赖存在"
     else
         echo "❌ LangChain 依赖缺失"
@@ -93,10 +93,10 @@ check_config_files() {
     fi
     
     # 检查Railway配置
-    if [ -f "backend/railway.json" ]; then
+    if [ -f "railway.json" ]; then
         echo "✅ Railway配置存在"
     else
-        echo "❌ backend/railway.json 不存在"
+        echo "❌ railway.json 不存在"
         return 1
     fi
     
@@ -164,7 +164,7 @@ main() {
     
     generate_deploy_commands
     
-    echo "📖 详细部署指南请查看 DEPLOYMENT.md"
+    echo "📖 详细部署说明请查看 README.md"
     echo ""
     echo "✨ 祝您部署顺利！"
 }

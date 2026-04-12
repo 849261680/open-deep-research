@@ -4,10 +4,11 @@ import time
 from collections.abc import AsyncGenerator
 
 import requests
-from dotenv import load_dotenv
 from requests.exceptions import Timeout
 
-load_dotenv()
+from ..utils.env import load_project_env
+
+load_project_env()
 
 
 class DeepSeekService:

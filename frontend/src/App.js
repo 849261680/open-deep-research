@@ -21,7 +21,7 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const { currentResearch, addResearch, updateResearch, setCurrentResearch } = useHistory();
+  const { currentResearch, addResearch, updateResearch, replaceResearchId, setCurrentResearch } = useHistory();
 
   // 检测移动端
   useEffect(() => {
@@ -72,6 +72,11 @@ function AppContent() {
 
         setStreamingData(prev => [...prev, update]);
 
+        if (update.type === 'planning' && update.data?.task_id && update.data.task_id !== research.id) {
+          replaceResearchId(research.id, update.data.task_id);
+          research.id = update.data.task_id;
+        }
+
         // 如果研究完成，设置最终数据
         if (update.type === 'report_complete') {
           console.log('🎯 研究完成');
@@ -105,10 +110,11 @@ function AppContent() {
         try {
           console.log('网络错误，尝试非流式API...');
           const result = await researchAPI.startResearch(query);
-          setResearchData(result);
+          const finalData = result.data || result;
+          setResearchData(finalData);
           setError(null);
           updateResearch(research.id, {
-            result,
+            result: finalData,
             status: 'completed',
           });
         } catch (fallbackErr) {
@@ -196,6 +202,8 @@ function AppContent() {
         setStreamingData([]);
         setError(null);
         setIsResearching(false);
+      } else if (currentResearch.isTemporaryId) {
+        return;
       } else {
         try {
           const remoteResearch = await researchAPI.getResearchTask(currentResearch.id);

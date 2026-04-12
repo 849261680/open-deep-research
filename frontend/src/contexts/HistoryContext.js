@@ -106,6 +106,7 @@ export const HistoryProvider = ({ children }) => {
       status: research.status || 'pending', // pending, completed, failed
       timestamp: new Date().toISOString(),
       pinned: false,
+      isTemporaryId: true,
       ...research,
     };
 
@@ -132,6 +133,20 @@ export const HistoryProvider = ({ children }) => {
     }
 
     logger.info('Updated research in history', { id, updates });
+  };
+
+  const replaceResearchId = (oldId, newId) => {
+    const newHistory = history.map((item) =>
+      item.id === oldId ? { ...item, id: newId, isTemporaryId: false } : item
+    );
+    setHistory(newHistory);
+    saveToLocalStorage(newHistory);
+
+    if (currentResearch && currentResearch.id === oldId) {
+      setCurrentResearch({ ...currentResearch, id: newId, isTemporaryId: false });
+    }
+
+    logger.info('Replaced research id', { oldId, newId });
   };
 
   // 删除研究记录
@@ -237,6 +252,7 @@ export const HistoryProvider = ({ children }) => {
     loading,
     addResearch,
     updateResearch,
+    replaceResearchId,
     deleteResearch,
     togglePin,
     clearHistory,

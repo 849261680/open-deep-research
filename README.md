@@ -94,13 +94,10 @@ chmod +x scripts/migrate-to-uv.sh
 
 ```bash
 # 启动后端
-cd backend
-uv run python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+./backend.sh
 
 # 启动前端
-cd frontend
-npm install
-npm start
+./frontend.sh
 ```
 
 ### 5. 访问应用
@@ -112,24 +109,14 @@ npm start
 ### 代码质量检查
 
 ```bash
-# 运行所有质量检查
-./scripts/lint.sh
-
-# 单独运行后端检查
-cd backend
-uv run ruff check app/ --fix
-uv run black app/ --check
-uv run mypy app/
+# 当前仓库未提供 scripts/lint.sh，可直接使用 uv 运行检查
+uv run ruff check backend/app tests
 ```
 
 ### 测试
 
 ```bash
-# 运行所有测试
-./scripts/test.sh
-
-# 单独运行后端测试
-cd backend
+# 运行后端测试
 uv run pytest
 ```
 
@@ -139,14 +126,12 @@ uv run pytest
 research-gpt/
 ├── pyproject.toml              # uv主配置文件
 ├── uv.lock                   # uv锁定文件
-├── .python-version            # Python版本指定
+├── backend.sh                # 后端启动脚本
+├── frontend.sh               # 前端启动脚本
 ├── scripts/                  # 开发脚本
 │   ├── migrate-to-uv.sh     # uv迁移脚本
-│   ├── dev.sh              # 开发环境启动
-│   ├── test.sh             # 测试脚本
-│   └── lint.sh            # 代码质量检查
+│   └── dev.sh              # 开发环境启动
 ├── backend/                   # 后端服务
-│   ├── pyproject.toml      # 后端依赖配置
 │   └── app/               # 应用代码
 └── frontend/                  # 前端应用
     ├── package.json         # Node.js依赖
