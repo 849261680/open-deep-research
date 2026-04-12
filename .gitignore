@@ -51,4 +51,7 @@ test_api.py
 # Logs
 *.log
 
+# Local runtime data
+backend/data/
+
 CLAUDE.md
