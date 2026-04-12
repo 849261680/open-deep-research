@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.105.0",
     "uvicorn>=0.24.0",
     "pydantic>=2.7.4",
+    "email-validator>=2.2.0",
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.6",
     "langchain>=0.1.0",
@@ -22,6 +23,12 @@ dependencies = [
     "duckduckgo-search>=3.9.0",
     "wikipedia>=1.4.0",
     "ty>=0.0.1a24",
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.1.0",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.13.0",
+    "asyncpg>=0.31.0",
 ]
 
 [project.optional-dependencies]

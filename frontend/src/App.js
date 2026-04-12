@@ -7,6 +7,8 @@ import LoadingSpinner from './components/LoadingSpinner';
 import StreamingResults from './components/StreamingResults';
 import EmptyState from './components/EmptyState';
 import { HistoryProvider, useHistory } from './contexts/HistoryContext';
+import { AuthProvider } from './contexts/AuthContext';
+import AuthPage from './components/AuthPage';
 import { researchAPI } from './services/api';
 
 /**
@@ -20,6 +22,7 @@ function AppContent() {
   const [backendStatus, setBackendStatus] = useState('checking');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const { currentResearch, addResearch, updateResearch, replaceResearchId, setCurrentResearch } = useHistory();
 
@@ -257,7 +260,10 @@ function AppContent() {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background-primary">
       {/* 顶部导航 */}
-      <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+      <Header
+        onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+        onLoginClick={() => setAuthModalOpen(true)}
+      />
 
       {/* 主布局：侧边栏 + 主内容 */}
       <div className="flex flex-1 overflow-hidden pt-12">
@@ -317,16 +323,21 @@ function AppContent() {
           </div>
         </main>
       </div>
+
+      {authModalOpen && (
+        <AuthPage onClose={() => setAuthModalOpen(false)} />
+      )}
     </div>
   );
 }
 
-// 使用 HistoryProvider 包装
 function App() {
   return (
-    <HistoryProvider>
-      <AppContent />
-    </HistoryProvider>
+    <AuthProvider>
+      <HistoryProvider>
+        <AppContent />
+      </HistoryProvider>
+    </AuthProvider>
   );
 }
 

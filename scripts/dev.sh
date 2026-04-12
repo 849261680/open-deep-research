@@ -2,6 +2,11 @@
 
 # Research Agent 开发环境启动脚本
 
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
 echo "🚀 启动 Research Agent 开发环境..."
 
 # 检查 uv 是否安装
@@ -30,15 +35,10 @@ fi
 
 # 启动后端
 echo "🔧 启动后端服务..."
-cd backend
-uv sync
-if [ $? -ne 0 ]; then
-    echo "❌ 后端依赖安装失败"
-    exit 1
-fi
+uv sync --extra dev
 
 # 后台启动后端
-uv run python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+uv run python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 echo "✅ 后端服务已启动 (PID: $BACKEND_PID)"
 
@@ -47,13 +47,8 @@ sleep 3
 
 # 启动前端
 echo "🎨 启动前端服务..."
-cd ../frontend
+cd "$ROOT_DIR/frontend"
 npm install
-if [ $? -ne 0 ]; then
-    echo "❌ 前端依赖安装失败"
-    kill $BACKEND_PID
-    exit 1
-fi
 
 # 启动前端
 npm start &

@@ -28,10 +28,14 @@ api.interceptors.response.use(
   }
 );
 
-// 请求拦截器
+// 请求拦截器：自动附加 JWT token
 api.interceptors.request.use(
   (config) => {
     console.log('API请求:', config.method?.toUpperCase(), config.url);
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -58,12 +62,16 @@ export const researchAPI = {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000);
 
+    const token = localStorage.getItem('access_token');
+    const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
+
     try {
       const response = await fetch(`${API_BASE_URL}${url}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive',
+          ...authHeaders,
         },
         body: JSON.stringify(payload),
         signal: controller.signal
@@ -183,6 +191,29 @@ export const researchAPI = {
     const response = await api.get('/api/health');
     return response.data;
   }
+};
+
+// 认证API
+export const authAPI = {
+  register: async (email, password) => {
+    const response = await api.post('/api/auth/register', { email, password });
+    return response.data;
+  },
+
+  login: async (email, password) => {
+    const response = await api.post('/api/auth/login', { email, password });
+    return response.data;
+  },
+
+  getMe: async () => {
+    const response = await api.get('/api/auth/me');
+    return response.data;
+  },
+
+  claimHistory: async (taskIds) => {
+    const response = await api.post('/api/auth/claim-history', { task_ids: taskIds });
+    return response.data;
+  },
 };
 
 export default api;

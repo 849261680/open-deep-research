@@ -117,6 +117,7 @@ uv run ruff check backend/app tests
 
 ```bash
 # 运行后端测试
+uv sync --extra dev
 uv run pytest
 ```
 

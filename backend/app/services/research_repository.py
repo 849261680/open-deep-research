@@ -27,6 +27,7 @@ class ResearchRepository:
                 """
                 CREATE TABLE IF NOT EXISTS research_tasks (
                     id TEXT PRIMARY KEY,
+                    user_id INTEGER,
                     query TEXT NOT NULL,
                     status TEXT NOT NULL,
                     payload TEXT NOT NULL,
@@ -34,6 +35,12 @@ class ResearchRepository:
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(research_tasks)").fetchall()
+            }
+            if "user_id" not in columns:
+                conn.execute("ALTER TABLE research_tasks ADD COLUMN user_id INTEGER")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS evidence_items (
@@ -52,15 +59,23 @@ class ResearchRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO research_tasks (id, query, status, payload, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO research_tasks (id, user_id, query, status, payload, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    user_id=excluded.user_id,
                     query=excluded.query,
                     status=excluded.status,
                     payload=excluded.payload,
                     updated_at=excluded.updated_at
                 """,
-                (task.id, task.query, task.status.value, payload, task.updated_at),
+                (
+                    task.id,
+                    task.user_id,
+                    task.query,
+                    task.status.value,
+                    payload,
+                    task.updated_at,
+                ),
             )
             conn.commit()
 
@@ -87,26 +102,71 @@ class ResearchRepository:
             )
             conn.commit()
 
-    def load_tasks(self) -> list[dict[str, object]]:
+    def load_tasks(self, user_id: int | None = None) -> list[dict[str, object]]:
         with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(
-                "SELECT payload FROM research_tasks ORDER BY updated_at DESC"
-            ).fetchall()
+            if user_id is None:
+                rows = conn.execute(
+                    """
+                    SELECT payload FROM research_tasks
+                    WHERE user_id IS NULL
+                    ORDER BY updated_at DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT payload FROM research_tasks
+                    WHERE user_id = ?
+                    ORDER BY updated_at DESC
+                    """,
+                    (user_id,),
+                ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
-    def load_task(self, task_id: str) -> ResearchTask | None:
+    def load_task(self, task_id: str, user_id: int | None = None) -> ResearchTask | None:
         with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
-                "SELECT payload FROM research_tasks WHERE id = ?",
-                (task_id,),
-            ).fetchone()
+            if user_id is None:
+                row = conn.execute(
+                    """
+                    SELECT payload FROM research_tasks
+                    WHERE id = ? AND user_id IS NULL
+                    """,
+                    (task_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT payload FROM research_tasks WHERE id = ? AND user_id = ?",
+                    (task_id, user_id),
+                ).fetchone()
         if row is None:
             return None
         return ResearchTask.model_validate(json.loads(row[0]))
 
-    def load_task_payload(self, task_id: str) -> dict[str, object] | None:
-        task = self.load_task(task_id)
+    def load_task_payload(
+        self, task_id: str, user_id: int | None = None
+    ) -> dict[str, object] | None:
+        task = self.load_task(task_id, user_id=user_id)
         return task.model_dump() if task is not None else None
+
+    def assign_anonymous_tasks_to_user(
+        self, task_ids: list[str], user_id: int
+    ) -> int:
+        normalized_task_ids = [task_id for task_id in task_ids if task_id]
+        if not normalized_task_ids:
+            return 0
+
+        placeholders = ",".join("?" for _ in normalized_task_ids)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                f"""
+                UPDATE research_tasks
+                SET user_id = ?
+                WHERE user_id IS NULL AND id IN ({placeholders})
+                """,
+                [user_id, *normalized_task_ids],
+            )
+            conn.commit()
+            return cursor.rowcount
 
     def clear(self) -> None:
         with sqlite3.connect(self.db_path) as conn:

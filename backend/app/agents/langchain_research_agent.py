@@ -187,27 +187,27 @@ class LangChainResearchAgent:
         )
 
     async def conduct_research(
-        self, query: str
+        self, query: str, user_id: int | None = None
     ) -> AsyncGenerator[dict[str, object], None]:
         """执行完整的研究流程。
 
         当前主流程已迁移到 orchestrator，这里保留兼容层给 API 使用。
         """
-        async for update in research_orchestrator.run(query):
+        async for update in research_orchestrator.run(query, user_id=user_id):
             if update.get("type") == "report_complete":
                 payload = update.get("data")
                 if isinstance(payload, dict):
                     self.research_history.append(payload)
             yield update
 
-    def get_research_history(self) -> list[dict[str, object]]:
+    def get_research_history(self, user_id: int | None = None) -> list[dict[str, object]]:
         """获取研究历史
 
         为什么需要这个方法：
         - 用户可能需要查看之前的研究结果
         - 提供完整的用户体验
         """
-        history = research_orchestrator.get_history()
+        history = research_orchestrator.get_history(user_id=user_id)
         return history if history else self.research_history
 
     def clear_memory(self) -> None:

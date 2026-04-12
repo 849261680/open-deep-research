@@ -1,13 +1,16 @@
 import json
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..agents.langchain_research_agent import langchain_research_agent
+from ..core.deps import get_current_user
+from ..core.deps import get_optional_current_user
 from ..core.orchestrator import research_orchestrator
+from ..models.user import User
 
 router = APIRouter()
 
@@ -37,6 +40,7 @@ async def research_options():
 @router.post("/research", response_model=None)
 async def start_research(
     request: ResearchRequest,
+    current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
     """开始研究任务"""
     if not request.query.strip():
@@ -47,7 +51,7 @@ async def start_research(
         async def generate() -> AsyncGenerator[str, None]:
             try:
                 async for update in langchain_research_agent.conduct_research(
-                    request.query
+                    request.query, user_id=current_user.id if current_user else None
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
@@ -67,7 +71,9 @@ async def start_research(
     try:
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in langchain_research_agent.conduct_research(request.query):
+        async for update in langchain_research_agent.conduct_research(
+            request.query, user_id=current_user.id if current_user else None
+        ):
             results.append(update)
             if update.get("type") == "report_complete" and isinstance(
                 update.get("data"), dict
@@ -86,6 +92,7 @@ async def start_research(
 @router.post("/research/resume", response_model=None)
 async def resume_research(
     request: ResumeResearchRequest,
+    current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
     """恢复已有研究任务"""
     if not request.task_id.strip():
@@ -94,7 +101,9 @@ async def resume_research(
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
-                async for update in research_orchestrator.resume_task(request.task_id):
+                async for update in research_orchestrator.resume_task(
+                    request.task_id, user_id=current_user.id if current_user else None
+                ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
                 error_update = {
@@ -113,7 +122,9 @@ async def resume_research(
     try:
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in research_orchestrator.resume_task(request.task_id):
+        async for update in research_orchestrator.resume_task(
+            request.task_id, user_id=current_user.id if current_user else None
+        ):
             results.append(update)
             if update.get("type") in {"report_complete", "error"} and isinstance(
                 update.get("data"), dict
@@ -130,35 +141,50 @@ async def resume_research(
 
 
 @router.get("/research/status")
-async def get_research_status():
+async def get_research_status(
+    current_user: User | None = Depends(get_optional_current_user),
+):
     """获取研究状态"""
     return {
         "status": "ready",
-        "steps": langchain_research_agent.get_research_history(),
+        "steps": langchain_research_agent.get_research_history(
+            user_id=current_user.id if current_user else None
+        ),
         "message": "研究代理已准备就绪",
     }
 
 
 @router.get("/research/history")
-async def get_research_history():
+async def get_research_history(
+    current_user: User | None = Depends(get_optional_current_user),
+):
     """获取研究历史"""
+    history = langchain_research_agent.get_research_history(
+        user_id=current_user.id if current_user else None
+    )
     return {
-        "history": langchain_research_agent.get_research_history(),
-        "total": len(langchain_research_agent.get_research_history()),
+        "history": history,
+        "total": len(history),
     }
 
 
 @router.get("/research/{task_id}")
-async def get_research_task(task_id: str):
+async def get_research_task(
+    task_id: str,
+    current_user: User | None = Depends(get_optional_current_user),
+):
     """获取单个研究任务详情"""
-    task = research_orchestrator.get_task(task_id)
+    task = research_orchestrator.get_task(
+        task_id,
+        user_id=current_user.id if current_user else None,
+    )
     if task is None:
         raise HTTPException(status_code=404, detail="研究任务不存在")
     return task
 
 
 @router.delete("/research/history")
-async def clear_research_history():
+async def clear_research_history(_current_user: User = Depends(get_current_user)):
     """清空研究历史和记忆"""
     langchain_research_agent.clear_memory()
     return {"message": "研究历史和记忆已清空"}

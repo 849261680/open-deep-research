@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import logger from '../services/logger';
 import { researchAPI } from '../services/api';
+import { useAuth } from './AuthContext';
 
 /**
  * HistoryContext - 历史记录状态管理
@@ -19,6 +20,7 @@ export const useHistory = () => {
 };
 
 export const HistoryProvider = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
   const [history, setHistory] = useState([]);
   const [currentResearch, setCurrentResearch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,54 +40,56 @@ export const HistoryProvider = ({ children }) => {
         logger.error('Failed to load history from localStorage', error);
       }
 
-      try {
-        const backendHistory = await researchAPI.getResearchHistory();
-        if (backendHistory?.history) {
-          const normalized = backendHistory.history.map((item) => ({
-            id: item.id,
-            query: item.query,
-            result: item.final_report ? {
+      if (!authLoading) {
+        try {
+          const backendHistory = await researchAPI.getResearchHistory();
+          if (backendHistory?.history) {
+            const normalized = backendHistory.history.map((item) => ({
               id: item.id,
               query: item.query,
-              status: item.status,
-              sections: item.sections || [],
-              report: item.final_report,
-              timestamp: item.completed_at || item.updated_at,
-              plan: (item.sections || []).map((section) => ({
-                step: section.step,
-                title: section.title,
-                description: section.description,
-                tool: section.tool,
-                search_queries: section.search_queries,
-                expected_outcome: section.expected_outcome,
-              })),
-              results: (item.sections || []).map((section) => ({
-                title: section.title,
-                status: section.status,
-                analysis: section.analysis,
-                citations: section.citations || [],
-                verification: section.verification || {},
-                compressed_evidence: section.compressed_evidence || '',
-              })),
-            } : null,
-            status: item.status === 'researching' || item.status === 'planning' || item.status === 'reporting'
-              ? 'in_progress'
-              : item.status,
-            timestamp: item.completed_at || item.updated_at || item.created_at,
-            pinned: localHistory.find((localItem) => localItem.id === item.id)?.pinned || false,
-          }));
-          setHistory(normalized);
-          saveToLocalStorage(normalized);
+              result: item.final_report ? {
+                id: item.id,
+                query: item.query,
+                status: item.status,
+                sections: item.sections || [],
+                report: item.final_report,
+                timestamp: item.completed_at || item.updated_at,
+                plan: (item.sections || []).map((section) => ({
+                  step: section.step,
+                  title: section.title,
+                  description: section.description,
+                  tool: section.tool,
+                  search_queries: section.search_queries,
+                  expected_outcome: section.expected_outcome,
+                })),
+                results: (item.sections || []).map((section) => ({
+                  title: section.title,
+                  status: section.status,
+                  analysis: section.analysis,
+                  citations: section.citations || [],
+                  verification: section.verification || {},
+                  compressed_evidence: section.compressed_evidence || '',
+                })),
+              } : null,
+              status: item.status === 'researching' || item.status === 'planning' || item.status === 'reporting'
+                ? 'in_progress'
+                : item.status,
+              timestamp: item.completed_at || item.updated_at || item.created_at,
+              pinned: localHistory.find((localItem) => localItem.id === item.id)?.pinned || false,
+            }));
+            setHistory(normalized);
+            saveToLocalStorage(normalized);
+          }
+        } catch (error) {
+          logger.error('Failed to load history from backend', error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        logger.error('Failed to load history from backend', error);
-      } finally {
-        setLoading(false);
       }
     };
 
     loadHistory();
-  }, []);
+  }, [authLoading, user]);
 
   // 保存历史记录到 localStorage
   const saveToLocalStorage = (newHistory) => {

@@ -26,8 +26,10 @@ class ResearchOrchestrator:
         self.repository = ResearchRepository()
         self.max_section_retries = 1
 
-    async def run(self, query: str) -> AsyncGenerator[dict[str, object], None]:
-        task = ResearchTask(id=str(uuid4()), query=query)
+    async def run(
+        self, query: str, user_id: int | None = None
+    ) -> AsyncGenerator[dict[str, object], None]:
+        task = ResearchTask(id=str(uuid4()), user_id=user_id, query=query)
         async for update in self.run_task(task):
             yield update
 
@@ -110,14 +112,16 @@ class ResearchOrchestrator:
             self.repository.save_task(task)
             yield self._event("error", f"报告生成失败: {exc}", None)
 
-    def get_history(self) -> list[dict[str, object]]:
-        return self.repository.load_tasks()
+    def get_history(self, user_id: int | None = None) -> list[dict[str, object]]:
+        return self.repository.load_tasks(user_id=user_id)
 
-    def get_task(self, task_id: str) -> dict[str, object] | None:
-        return self.repository.load_task_payload(task_id)
+    def get_task(self, task_id: str, user_id: int | None = None) -> dict[str, object] | None:
+        return self.repository.load_task_payload(task_id, user_id=user_id)
 
-    async def resume_task(self, task_id: str) -> AsyncGenerator[dict[str, object], None]:
-        task = self.repository.load_task(task_id)
+    async def resume_task(
+        self, task_id: str, user_id: int | None = None
+    ) -> AsyncGenerator[dict[str, object], None]:
+        task = self.repository.load_task(task_id, user_id=user_id)
         if task is None:
             yield self._event("error", f"任务不存在: {task_id}", None)
             return
@@ -128,7 +132,7 @@ class ResearchOrchestrator:
                 task.model_dump(),
             )
             return
-        async for update in self.run_task(task):
+        async for update in self._resume_task(task):
             yield update
 
     def clear(self) -> None:
@@ -235,6 +239,96 @@ class ResearchOrchestrator:
 
             if not failed:
                 break
+
+    async def _resume_task(
+        self, task: ResearchTask
+    ) -> AsyncGenerator[dict[str, object], None]:
+        yield self._event("resume", "正在恢复研究任务...", {"task_id": task.id})
+
+        if not task.sections:
+            async for update in self.run_task(task):
+                yield update
+            return
+
+        yield self._event(
+            "plan",
+            "已加载已有研究计划",
+            [section.model_dump() for section in task.sections],
+        )
+
+        task.status = ResearchTaskStatus.RESEARCHING
+        task.touch()
+        self.repository.save_task(task)
+
+        section_results = [
+            {
+                "step": section.step,
+                "title": section.title,
+                "status": section.status,
+                "analysis": section.analysis,
+                "citations": [citation.model_dump() for citation in section.citations],
+                "compressed_evidence": section.compressed_evidence,
+                "verification": section.verification,
+                "section_id": section.id,
+            }
+            for section in task.sections
+            if section.status == "completed"
+        ]
+
+        for section in task.sections:
+            if section.status == "completed":
+                continue
+            async for update in self._run_section(task, section):
+                if update.get("type") == "step_complete" and update.get("data"):
+                    section_results.append(dict(update["data"]))
+                yield update
+
+        task.status = ResearchTaskStatus.REPORTING
+        task.touch()
+        self.repository.save_task(task)
+        yield self._event("report_generating", "正在生成最终研究报告...", None)
+
+        try:
+            final_report = await self.report_generator.generate_final_report(
+                section_results,
+                task.query,
+            )
+            task.final_report = final_report
+            task.status = ResearchTaskStatus.COMPLETED
+            task.touch()
+            task.completed_at = task.updated_at
+            self.repository.save_task(task)
+            yield self._event(
+                "report_complete",
+                "研究完成",
+                {
+                    "id": task.id,
+                    "user_id": task.user_id,
+                    "query": task.query,
+                    "status": task.status.value,
+                    "plan": [
+                        {
+                            "step": section.step,
+                            "title": section.title,
+                            "description": section.description,
+                            "tool": section.tool,
+                            "search_queries": section.search_queries,
+                            "expected_outcome": section.expected_outcome,
+                        }
+                        for section in task.sections
+                    ],
+                    "sections": [section.model_dump() for section in task.sections],
+                    "results": section_results,
+                    "report": final_report,
+                    "timestamp": task.completed_at,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            task.status = ResearchTaskStatus.FAILED
+            task.error = str(exc)
+            task.touch()
+            self.repository.save_task(task)
+            yield self._event("error", f"报告生成失败: {exc}", None)
 
     def _build_sections(self, plan: list[dict[str, object]]) -> list[ResearchSection]:
         sections: list[ResearchSection] = []

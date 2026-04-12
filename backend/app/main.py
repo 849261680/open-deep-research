@@ -1,11 +1,21 @@
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.auth import router as auth_router
 from .api.research import router as research_router
+from .db.base import init_db
 
-app = FastAPI(title="Deep Research Agent", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await init_db()
+    yield
+
+
+app = FastAPI(title="Deep Research Agent", version="1.0.0", lifespan=lifespan)
 
 # 获取允许的源
 allowed_origins = [
@@ -36,6 +46,7 @@ app.add_middleware(
 )
 
 # 路由
+app.include_router(auth_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 
 

@@ -61,6 +61,7 @@ class ResearchSection(BaseModel):
 
 class ResearchTask(BaseModel):
     id: str
+    user_id: int | None = None
     query: str
     status: ResearchTaskStatus = ResearchTaskStatus.PENDING
     sections: list[ResearchSection] = Field(default_factory=list)
