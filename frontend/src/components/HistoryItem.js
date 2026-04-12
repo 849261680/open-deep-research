@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Clock, XCircle, Pin, Trash2 } from 'lucide-react';
+import { CheckCircle, Clock, XCircle, Pin, Trash2, RotateCcw } from 'lucide-react';
 import { useHistory } from '../contexts/HistoryContext';
 
 /**
@@ -8,7 +8,7 @@ import { useHistory } from '../contexts/HistoryContext';
  * 显示研究查询、状态、时间戳
  * 支持点击加载、固定、删除操作
  */
-const HistoryItem = ({ research, isActive }) => {
+const HistoryItem = ({ research, isActive, onResume }) => {
   const { loadResearch, togglePin, deleteResearch } = useHistory();
 
   // 格式化时间
@@ -69,6 +69,13 @@ const HistoryItem = ({ research, isActive }) => {
     }
   };
 
+  const handleResume = (e) => {
+    e.stopPropagation();
+    if (onResume) {
+      onResume(research);
+    }
+  };
+
   return (
     <div
       onClick={handleClick}
@@ -121,6 +128,15 @@ const HistoryItem = ({ research, isActive }) => {
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+        {(research.status === 'failed' || research.status === 'in_progress') && (
+          <button
+            onClick={handleResume}
+            className="p-1 rounded hover:bg-background-secondary transition-colors duration-fast"
+            title="恢复研究"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-text-tertiary" />
+          </button>
+        )}
       </div>
     </div>
   );

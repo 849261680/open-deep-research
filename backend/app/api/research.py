@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..agents.langchain_research_agent import langchain_research_agent
+from ..core.orchestrator import research_orchestrator
 
 router = APIRouter()
 
@@ -20,6 +21,11 @@ class ResearchResponse(BaseModel):
     query: str
     status: str
     data: dict
+
+
+class ResumeResearchRequest(BaseModel):
+    task_id: str
+    stream: bool | None = True
 
 
 @router.options("/research")
@@ -60,14 +66,67 @@ async def start_research(
     # 非流式响应
     try:
         results = []
+        final_payload: dict[str, object] | None = None
         async for update in langchain_research_agent.conduct_research(request.query):
             results.append(update)
+            if update.get("type") == "report_complete" and isinstance(
+                update.get("data"), dict
+            ):
+                final_payload = dict(update["data"])
 
         return ResearchResponse(
-            query=request.query, status="completed", data={"updates": results}
+            query=request.query,
+            status="completed",
+            data=final_payload or {"updates": results},
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"研究失败: {str(e)}") from e
+
+
+@router.post("/research/resume", response_model=None)
+async def resume_research(
+    request: ResumeResearchRequest,
+) -> StreamingResponse | ResearchResponse:
+    """恢复已有研究任务"""
+    if not request.task_id.strip():
+        raise HTTPException(status_code=400, detail="任务ID不能为空")
+
+    if request.stream:
+        async def generate() -> AsyncGenerator[str, None]:
+            try:
+                async for update in research_orchestrator.resume_task(request.task_id):
+                    yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                error_update = {
+                    "type": "error",
+                    "message": f"恢复研究过程中发生错误: {str(e)}",
+                    "data": None,
+                }
+                yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    try:
+        results = []
+        final_payload: dict[str, object] | None = None
+        async for update in research_orchestrator.resume_task(request.task_id):
+            results.append(update)
+            if update.get("type") in {"report_complete", "error"} and isinstance(
+                update.get("data"), dict
+            ):
+                final_payload = dict(update["data"])
+
+        return ResearchResponse(
+            query=request.task_id,
+            status="completed",
+            data=final_payload or {"updates": results},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"恢复研究失败: {str(e)}") from e
 
 
 @router.get("/research/status")
@@ -87,6 +146,15 @@ async def get_research_history():
         "history": langchain_research_agent.get_research_history(),
         "total": len(langchain_research_agent.get_research_history()),
     }
+
+
+@router.get("/research/{task_id}")
+async def get_research_task(task_id: str):
+    """获取单个研究任务详情"""
+    task = research_orchestrator.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="研究任务不存在")
+    return task
 
 
 @router.delete("/research/history")

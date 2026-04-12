@@ -131,6 +131,43 @@ function AppContent() {
     }
   };
 
+  const handleResumeResearch = async (research) => {
+    setIsResearching(true);
+    setError(null);
+    setResearchData(null);
+    setStreamingData([]);
+    setCurrentResearch(research);
+
+    try {
+      await researchAPI.resumeResearchStream(research.id, (update) => {
+        setStreamingData(prev => [...prev, update]);
+
+        if (update.type === 'report_complete') {
+          setResearchData(update.data);
+          updateResearch(research.id, {
+            result: update.data,
+            status: 'completed',
+            timestamp: update.data.timestamp || new Date().toISOString(),
+          });
+        } else if (update.type === 'error') {
+          setError(update.message);
+          updateResearch(research.id, {
+            status: 'failed',
+            error: update.message,
+          });
+        } else if (update.type === 'step_retry') {
+          updateResearch(research.id, {
+            status: 'in_progress',
+          });
+        }
+      });
+    } catch (err) {
+      setError(`恢复研究失败: ${err.message}`);
+    } finally {
+      setIsResearching(false);
+    }
+  };
+
   const handleNewResearch = () => {
     setCurrentResearch(null);
     setResearchData(null);
@@ -149,18 +186,62 @@ function AppContent() {
 
   // 当从历史加载研究时
   useEffect(() => {
-    if (currentResearch && currentResearch.result) {
-      setResearchData(currentResearch.result);
-      setStreamingData([]);
-      setError(null);
-      setIsResearching(false);
+    const loadCurrentResearch = async () => {
+      if (!currentResearch) {
+        return;
+      }
 
-      // 移动端关闭侧边栏
+      if (currentResearch.result) {
+        setResearchData(currentResearch.result);
+        setStreamingData([]);
+        setError(null);
+        setIsResearching(false);
+      } else {
+        try {
+          const remoteResearch = await researchAPI.getResearchTask(currentResearch.id);
+          if (remoteResearch.final_report) {
+            const hydrated = {
+              id: remoteResearch.id,
+              query: remoteResearch.query,
+              status: remoteResearch.status,
+              plan: (remoteResearch.sections || []).map((section) => ({
+                step: section.step,
+                title: section.title,
+                description: section.description,
+                tool: section.tool,
+                search_queries: section.search_queries,
+                expected_outcome: section.expected_outcome,
+              })),
+              sections: remoteResearch.sections || [],
+              results: (remoteResearch.sections || []).map((section) => ({
+                title: section.title,
+                status: section.status,
+                analysis: section.analysis,
+                citations: section.citations || [],
+                verification: section.verification || {},
+                compressed_evidence: section.compressed_evidence || '',
+              })),
+              report: remoteResearch.final_report,
+              timestamp: remoteResearch.completed_at || remoteResearch.updated_at,
+            };
+            setResearchData(hydrated);
+            updateResearch(currentResearch.id, {
+              result: hydrated,
+              status: remoteResearch.status === 'completed' ? 'completed' : currentResearch.status,
+            });
+          }
+        } catch (err) {
+          console.error('加载远程研究详情失败:', err);
+        }
+      }
+
       if (isMobile) {
         setSidebarOpen(false);
       }
-    }
-  }, [currentResearch, isMobile]);
+    };
+
+    loadCurrentResearch();
+  }, [currentResearch, isMobile, updateResearch]);
 
   // 判断是否显示空状态
   const showEmptyState = !isResearching && !researchData && !currentResearch;
@@ -176,6 +257,7 @@ function AppContent() {
         <Sidebar
           backendStatus={backendStatus}
           onNewResearch={handleNewResearch}
+          onResumeResearch={handleResumeResearch}
           isMobile={isMobile}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}

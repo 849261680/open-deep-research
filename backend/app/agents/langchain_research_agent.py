@@ -8,6 +8,7 @@ from langchain.agents import create_react_agent
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 
+from ..core.orchestrator import research_orchestrator
 from ..llms.deepseek_llm import DeepSeekLLM
 from ..tools.search_tools import research_tools
 from .report_generator import ReportGenerator
@@ -190,108 +191,16 @@ class LangChainResearchAgent:
     async def conduct_research(
         self, query: str
     ) -> AsyncGenerator[dict[str, object], None]:
-        """执行完整的研究流程
+        """执行完整的研究流程。
 
-        为什么这个方法保留在主类：
-        - 作为总体协调方法，负责调度各个模块
-        - 管理整个研究流程的状态和历史记录
+        当前主流程已迁移到 orchestrator，这里保留兼容层给 API 使用。
         """
-        self._ensure_initialized()
-
-        # 1. 制定研究计划 - 显示详细过程
-        yield {"type": "planning", "message": "正在制定研究计划...", "data": None}
-
-        # 调用带回调的计划制定方法
-        research_plan = None
-        async for update in self._plan_research_with_updates(query):
+        async for update in research_orchestrator.run(query):
+            if update.get("type") == "report_complete":
+                payload = update.get("data")
+                if isinstance(payload, dict):
+                    self.research_history.append(payload)
             yield update
-            if update.get("type") == "plan" and update.get("data"):
-                research_plan = update["data"]
-
-        if not research_plan:
-            # 如果没有获得计划，使用备用方法
-            research_plan = await self.plan_research(query)
-            yield {"type": "plan", "message": "研究计划制定完成", "data": research_plan}
-
-        # 2. 执行研究步骤
-        research_results = []
-        # 确保 research_plan 是可迭代的列表
-        if not isinstance(research_plan, list):
-            research_plan = []
-        for step in research_plan:
-            # 确保 step 是字典类型
-            if not isinstance(step, dict):
-                continue
-
-            # 安全地转换为预期的字典类型
-            step_dict = dict(step)
-
-            yield {
-                "type": "step_start",
-                "message": f"开始执行：{step_dict.get('title', '未知步骤')}",
-                "data": step_dict,
-            }
-
-            # 执行带进度更新的研究步骤
-            step_result = None
-            async for update in self._execute_research_step_with_updates(
-                step_dict, query
-            ):
-                yield update
-                if update.get("type") == "step_complete":
-                    step_result = update["data"]
-                    research_results.append(step_result)
-
-        # 3. 生成最终报告
-        print("🔄 [后端调试] 开始生成最终报告...")
-        yield {
-            "type": "report_generating",
-            "message": "正在生成最终研究报告...",
-            "data": None,
-        }
-
-        try:
-            print(f"📊 [后端调试] 研究结果数量: {len(research_results)}")
-            print(f"📊 [后端调试] 研究结果内容: {research_results}")
-
-            final_report = await self.generate_final_report(research_results, query)
-
-            print(f"✅ [后端调试] 报告生成成功，长度: {len(final_report)} 字符")
-            print(f"📝 [后端调试] 报告内容预览: {final_report[:200]}...")
-
-            # 保存到历史记录 - 为什么保存历史：便于用户查看和管理之前的研究
-            research_record = {
-                "query": query,
-                "plan": research_plan,
-                "results": research_results,
-                "report": final_report,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            self.research_history.append(research_record)
-
-            print("💾 [后端调试] 研究记录已创建，准备发送report_complete事件")
-            print(f"📋 [后端调试] 研究记录内容: {research_record}")
-
-            yield {
-                "type": "report_complete",
-                "message": "研究完成",
-                "data": research_record,
-            }
-
-            print("🎯 [后端调试] report_complete事件已发送")
-
-        except Exception as e:
-            print(f"❌ [后端调试] 报告生成失败: {e}")
-            import traceback
-
-            print(f"📋 [后端调试] 错误详情: {traceback.format_exc()}")
-
-            # 发送错误事件
-            yield {
-                "type": "error",
-                "message": f"报告生成失败: {str(e)}",
-                "data": None,
-            }
 
     def get_research_history(self) -> list[dict[str, object]]:
         """获取研究历史
@@ -300,7 +209,8 @@ class LangChainResearchAgent:
         - 用户可能需要查看之前的研究结果
         - 提供完整的用户体验
         """
-        return self.research_history
+        history = research_orchestrator.get_history()
+        return history if history else self.research_history
 
     def clear_memory(self) -> None:
         """清空记忆
@@ -312,6 +222,7 @@ class LangChainResearchAgent:
         if self.memory:
             self.memory.clear()
         self.research_history = []
+        research_orchestrator.clear()
 
 
 # 全局实例

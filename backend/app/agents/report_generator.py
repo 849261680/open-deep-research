@@ -94,8 +94,23 @@ class ReportGenerator:
         step_analyses = []
         for result in research_results:
             if result["status"] == "completed":
+                citations = result.get("citations", [])
+                citation_lines = []
+                if isinstance(citations, list):
+                    for citation in citations[:5]:
+                        if isinstance(citation, dict):
+                            title = citation.get("title", "")
+                            link = citation.get("link", "")
+                            if title and link:
+                                citation_lines.append(f"- {title}: {link}")
+
+                analysis_text = str(result["analysis"])
+                if citation_lines:
+                    analysis_text = (
+                        f"{analysis_text}\n\n参考来源:\n" + "\n".join(citation_lines)
+                    )
                 step_analyses.append(
-                    {"title": result["title"], "analysis": result["analysis"]}
+                    {"title": result["title"], "analysis": analysis_text}
                 )
         return step_analyses
 

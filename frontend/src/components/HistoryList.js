@@ -9,7 +9,7 @@ import HistoryItem from './HistoryItem';
  * 显示分组的历史记录
  * 支持搜索过滤
  */
-const HistoryList = () => {
+const HistoryList = ({ onResume }) => {
   const { history, currentResearch, searchHistory, groupedHistory } = useHistory();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -41,6 +41,7 @@ const HistoryList = () => {
               key={research.id}
               research={research}
               isActive={currentResearch && currentResearch.id === research.id}
+              onResume={onResume}
             />
           ))}
         </div>
@@ -80,6 +81,7 @@ const HistoryList = () => {
                 key={research.id}
                 research={research}
                 isActive={currentResearch && currentResearch.id === research.id}
+                onResume={onResume}
               />
             ))}
           </div>

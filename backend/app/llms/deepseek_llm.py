@@ -1,5 +1,3 @@
-import asyncio
-
 from langchain_core.language_models.llms import BaseLLM
 from langchain_core.outputs import Generation
 from langchain_core.outputs import LLMResult
@@ -29,17 +27,10 @@ class DeepSeekLLM(BaseLLM):
         **kwargs: object,
     ) -> LLMResult:
         """Generate text from DeepSeek API."""
-        try:
-            # For simplicity, we'll just handle the first prompt
-            prompt = prompts[0]
-            response = asyncio.run(
-                deepseek_service.generate_response(prompt, self.max_tokens)
-            )
-            generation = Generation(text=response)
-            return LLMResult(generations=[[generation]])
-        except Exception as e:
-            generation = Generation(text=f"Error calling DeepSeek API: {str(e)}")
-            return LLMResult(generations=[[generation]])
+        prompt = prompts[0]
+        response = deepseek_service.generate_response_sync(prompt, self.max_tokens)
+        generation = Generation(text=response)
+        return LLMResult(generations=[[generation]])
 
     async def _agenerate(
         self,
@@ -49,15 +40,10 @@ class DeepSeekLLM(BaseLLM):
         **kwargs: object,
     ) -> LLMResult:
         """Generate text from DeepSeek API asynchronously."""
-        try:
-            # For simplicity, we'll just handle the first prompt
-            prompt = prompts[0]
-            response = await deepseek_service.generate_response(prompt, self.max_tokens)
-            generation = Generation(text=response)
-            return LLMResult(generations=[[generation]])
-        except Exception as e:
-            generation = Generation(text=f"Error calling DeepSeek API: {str(e)}")
-            return LLMResult(generations=[[generation]])
+        prompt = prompts[0]
+        response = await deepseek_service.generate_response(prompt, self.max_tokens)
+        generation = Generation(text=response)
+        return LLMResult(generations=[[generation]])
 
     def _call(
         self,

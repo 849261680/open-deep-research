@@ -54,22 +54,18 @@ api.interceptors.response.use(
 
 // 研究API
 export const researchAPI = {
-  // 开始研究（流式）
-  startResearchStream: async (query, onUpdate) => {
+  streamRequest: async (url, payload, onUpdate) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/research`, {
+      const response = await fetch(`${API_BASE_URL}${url}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive',
         },
-        body: JSON.stringify({
-          query: query,
-          stream: true
-        }),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
 
@@ -86,9 +82,9 @@ export const researchAPI = {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
 
         let eventSeparatorIndex;
@@ -107,53 +103,45 @@ export const researchAPI = {
             continue;
           }
 
-          const payload = dataLines.join('\n').trim();
-          if (!payload || payload === '[DONE]') {
-            continue;
-          }
-
-          const candidate = pendingData ? `${pendingData}${payload}` : payload;
+          const candidate = pendingData ? `${pendingData}${dataLines.join('\n').trim()}` : dataLines.join('\n').trim();
 
           try {
             const data = JSON.parse(candidate);
             pendingData = '';
-            console.log('🔍 [API调试] 成功解析JSON数据:', data);
-            console.log('🔍 [API调试] 数据类型:', data.type);
             onUpdate(data);
           } catch (error) {
             pendingData = candidate;
-            console.warn('⚠️ [API调试] JSON解析失败，等待更多数据:', error);
-            console.warn('⚠️ [API调试] 待解析数据:', candidate);
           }
-        }
-      }
-
-      if (pendingData) {
-        try {
-          const data = JSON.parse(pendingData);
-          console.log('🔍 [API调试] 流结束时成功解析剩余数据:', data);
-          onUpdate(data);
-        } catch (error) {
-          console.warn('❌ [API调试] 流结束时仍存在无法解析的JSON片段:', pendingData);
-          console.warn('❌ [API调试] 解析错误:', error);
         }
       }
     } catch (error) {
       clearTimeout(timeoutId);
-      
+
       if (error.name === 'AbortError') {
-        console.error('流式请求超时:', error);
         throw new Error('请求超时，请重试');
-      } else if (error.message.includes('Failed to fetch') || 
+      } else if (error.message.includes('Failed to fetch') ||
                  error.message.includes('NetworkError') ||
                  error.message.includes('ERR_CONNECTION_CLOSED')) {
-        console.error('网络连接错误:', error);
         throw new Error('网络连接失败，请检查网络连接或稍后重试');
       } else {
-        console.error('流式请求失败:', error);
         throw error;
       }
     }
+  },
+
+  // 开始研究（流式）
+  startResearchStream: async (query, onUpdate) => {
+    return researchAPI.streamRequest('/api/research', {
+      query,
+      stream: true
+    }, onUpdate);
+  },
+
+  resumeResearchStream: async (taskId, onUpdate) => {
+    return researchAPI.streamRequest('/api/research/resume', {
+      task_id: taskId,
+      stream: true
+    }, onUpdate);
   },
 
   // 开始研究（非流式）
@@ -176,6 +164,11 @@ export const researchAPI = {
   // 获取研究历史
   getResearchHistory: async () => {
     const response = await api.get('/api/research/history');
+    return response.data;
+  },
+
+  getResearchTask: async (taskId) => {
+    const response = await api.get(`/api/research/${taskId}`);
     return response.data;
   },
 

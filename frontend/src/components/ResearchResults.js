@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { FileText, CheckCircle } from 'lucide-react';
+import { FileText, CheckCircle, ShieldCheck, ShieldAlert, Link2, FileSearch } from 'lucide-react';
 import ResultHeader from './ResultHeader';
 import CollapsibleSection from './CollapsibleSection';
 
@@ -11,6 +11,28 @@ import CollapsibleSection from './CollapsibleSection';
  */
 const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
+
+  const getVerificationBadge = (verification) => {
+    if (!verification || typeof verification !== 'object') {
+      return null;
+    }
+
+    if (verification.passed) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-success-bg px-2 py-1 text-xs font-medium text-success">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          校验通过
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        需复核
+      </span>
+    );
+  };
 
   const handleDownload = () => {
     // 创建 Markdown 文件下载
@@ -130,6 +152,77 @@ const ResearchResults = ({ data }) => {
                     <div className="text-sm text-text-secondary leading-relaxed">
                       {result.analysis || result.result || '暂无详细信息'}
                     </div>
+
+                    {result.verification && (
+                      <div className="mt-md rounded-md border border-border-light bg-background-secondary p-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">结果校验</span>
+                            {getVerificationBadge(result.verification)}
+                          </div>
+                          {typeof result.verification.score === 'number' && (
+                            <span className="text-xs text-text-secondary">
+                              可信度 {(result.verification.score * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+
+                        {result.verification.summary && (
+                          <p className="mt-xs text-xs text-text-secondary">
+                            {result.verification.summary}
+                          </p>
+                        )}
+
+                        {Array.isArray(result.verification.issues) && result.verification.issues.length > 0 && (
+                          <div className="mt-sm">
+                            <p className="text-xs font-medium text-text-secondary">需要关注</p>
+                            <div className="mt-xs space-y-xs">
+                              {result.verification.issues.map((issue, idx) => (
+                                <p key={idx} className="text-xs text-warning">
+                                  • {issue}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {Array.isArray(result.citations) && result.citations.length > 0 && (
+                      <div className="mt-md pt-md border-t border-border-light">
+                        <div className="mb-xs flex items-center gap-2">
+                          <Link2 className="h-4 w-4 text-text-secondary" />
+                          <p className="text-xs font-medium text-text-secondary">
+                            引用来源 ({result.citations.length})
+                          </p>
+                        </div>
+                        <div className="space-y-xs">
+                          {result.citations.slice(0, 5).map((citation, idx) => (
+                            <a
+                              key={idx}
+                              href={citation.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-accent hover:text-accent-dark underline decoration-1 underline-offset-2 transition-colors duration-fast"
+                            >
+                              {citation.title || citation.link}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {result.compressed_evidence && (
+                      <div className="mt-md pt-md border-t border-border-light">
+                        <div className="mb-xs flex items-center gap-2">
+                          <FileSearch className="h-4 w-4 text-text-secondary" />
+                          <p className="text-xs font-medium text-text-secondary">证据压缩</p>
+                        </div>
+                        <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-background-secondary p-sm text-xs leading-relaxed text-text-secondary">
+                          {result.compressed_evidence}
+                        </pre>
+                      </div>
+                    )}
 
                     {/* 如果有搜索源，显示它们 */}
                     {result.search_sources && result.search_sources.length > 0 && (

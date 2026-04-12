@@ -8,7 +8,7 @@ import HistoryList from './HistoryList';
  *
  * 包含新建按钮、历史记录列表、底部状态
  */
-const Sidebar = ({ backendStatus, onNewResearch, isMobile, isOpen, onClose }) => {
+const Sidebar = ({ backendStatus, onNewResearch, onResumeResearch, isMobile, isOpen, onClose }) => {
   // 移动端关闭侧边栏
   const handleOverlayClick = () => {
     if (isMobile && onClose) {
@@ -40,7 +40,7 @@ const Sidebar = ({ backendStatus, onNewResearch, isMobile, isOpen, onClose }) =>
 
       {/* 历史记录列表 */}
       <div className="flex-1 overflow-hidden py-md">
-        <HistoryList />
+        <HistoryList onResume={onResumeResearch} />
       </div>
 
       {/* 底部 - 服务器状态 */}

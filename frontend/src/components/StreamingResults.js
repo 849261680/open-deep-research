@@ -53,6 +53,7 @@ const StreamingResults = ({ updates }) => {
       case 'plan':
         return CheckCircle;
       case 'step_start':
+      case 'step_retry':
       case 'search_progress':
         return Search;
       case 'search_result':
@@ -77,6 +78,7 @@ const StreamingResults = ({ updates }) => {
       case 'planning':
       case 'planning_step':
       case 'step_start':
+      case 'step_retry':
       case 'search_progress':
       case 'analysis_progress':
       case 'report_generating':
@@ -202,10 +204,15 @@ const StreamingResults = ({ updates }) => {
         return null;
 
       case 'step_start':
+      case 'step_retry':
         return (
           <div className="mt-sm p-sm bg-background-secondary rounded-md text-xs">
             <p className="font-medium text-text-primary">{update.data.title}</p>
-            {update.data.description && (
+            {update.type === 'step_retry' ? (
+              <p className="text-text-tertiary mt-0.5">
+                第 {update.data.retry_count} 次重试
+              </p>
+            ) : update.data.description && (
               <p className="text-text-tertiary mt-0.5">{update.data.description}</p>
             )}
           </div>
