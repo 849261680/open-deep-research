@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from ..llms.deepseek_llm import DeepSeekLLM
+
+logger = logging.getLogger(__name__)
 from ..models.research_task import Citation
 
 
@@ -77,7 +80,7 @@ class VerifierService:
             parsed["method"] = "llm_critic"
             return parsed
         except Exception as exc:  # noqa: BLE001
-            print(f"⚠️ verifier llm critic failed: {exc}")
+            logger.warning("verifier llm critic failed: %s", exc)
             return None
 
     def _deterministic_verify(

@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime
 from datetime import timezone
 
 from ..chains.research_chains import research_chains
+
+logger = logging.getLogger(__name__)
 
 
 class ReportGenerator:
@@ -20,42 +23,28 @@ class ReportGenerator:
         - 统一的提示词管理，便于维护和优化
         - 遵循 LangChain 最佳实践
         """
-        print("🚀 [报告生成器调试] 开始生成最终报告...")
+        logger.debug("开始生成最终报告...")
         try:
-            # 1. 收集所有分析结果
             step_analyses = self._collect_step_analyses(research_results)
-            print(f"📊 [报告生成器调试] 收集到 {len(step_analyses)} 个步骤分析")
+            logger.debug("收集到 %d 个步骤分析", len(step_analyses))
 
-            # 2. 格式化分析结果，准备 chains 输入
             all_analyses_text = self._format_analyses_text(step_analyses)
-            print(f"📝 [报告生成器调试] 分析文本长度: {len(all_analyses_text)} 字符")
-
-            # 3. 限制输入长度，确保不超时 - 为什么限制：避免API超时，确保服务稳定性
             all_analyses_text = self._limit_input_length(all_analyses_text)
-            print(f"✂️ [报告生成器调试] 截断后长度: {len(all_analyses_text)} 字符")
 
-            # 4. 记录统计信息
             self._log_report_statistics(
                 original_query, all_analyses_text, step_analyses
             )
 
-            # 5. 使用 report_chains 生成最终报告，保持架构一致性
-            print("⛓️ [报告生成器调试] 创建报告生成链...")
             report_chain = research_chains.create_report_generation_chain()
 
-            # 6. 准备 chains 所需的输入格式
             chain_input = {
                 "query": original_query,
-                "research_plan": "基于多步骤研究计划",  # 简化的研究计划描述
+                "research_plan": "基于多步骤研究计划",
                 "step_analyses": all_analyses_text,
-                "synthesis": f"针对'{original_query}'的综合分析",  # 简化的综合分析
+                "synthesis": f"针对'{original_query}'的综合分析",
             }
-            print(f"🔧 [报告生成器调试] 链输入准备完成，查询: {original_query}")
 
-            # 7. 调用链生成报告
-            print("🔄 [报告生成器调试] 开始调用链生成报告...")
             result = await report_chain.ainvoke(chain_input)
-            print("✅ [报告生成器调试] 链调用完成")
 
             final_report = (
                 result.get("final_report", result)
@@ -63,23 +52,17 @@ class ReportGenerator:
                 else result
             )
 
-            print(f"📄 [报告生成器调试] 最终报告长度: {len(final_report)} 字符")
-            print(f"📄 [报告生成器调试] 报告预览: {final_report[:200]}...")
-
+            logger.debug("最终报告长度: %d 字符", len(final_report))
             return final_report
 
         except Exception as e:
-            print(f"❌ [报告生成器调试] 报告生成失败: {e}")
-            import traceback
-
-            print(f"📋 [报告生成器调试] 错误详情: {traceback.format_exc()}")
-            print("🔄 [报告生成器调试] 回退到简单报告生成...")
+            logger.exception("报告生成失败: %s", e)
+            logger.info("回退到简单报告生成...")
 
             # 回退到简单报告生成 - 为什么需要回退：确保即使主要逻辑失败也能提供基本服务
             simple_report = self._generate_simple_report(
                 research_results, original_query
             )
-            print(f"📄 [报告生成器调试] 简单报告长度: {len(simple_report)} 字符")
             return simple_report
 
     def _collect_step_analyses(
@@ -138,7 +121,7 @@ class ReportGenerator:
         """
         if len(text) > max_length:
             text = text[:max_length] + "...\n\n[内容已截断]"
-            print(f"⚠️ 研究结果过长，已截断至 {max_length} 字符")
+            logger.warning("研究结果过长，已截断至 %d 字符", max_length)
         return text
 
     def _log_report_statistics(
@@ -153,10 +136,10 @@ class ReportGenerator:
         - 便于调试和性能优化
         - 了解系统使用情况
         """
-        print("📊 最终报告输入统计:")
-        print(f"   - 查询: {original_query}")
-        print(f"   - 分析文本长度: {len(all_analyses_text)} 字符")
-        print(f"   - 完成的步骤数: {len(step_analyses)}")
+        logger.debug(
+            "最终报告输入统计 — 查询: %s，分析文本: %d 字符，完成步骤: %d",
+            original_query, len(all_analyses_text), len(step_analyses),
+        )
 
     def _generate_simple_report(
         self, research_results: list[dict[str, object]], original_query: str

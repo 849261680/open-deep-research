@@ -1,0 +1,477 @@
+"""
+纯逻辑单元测试 — 不依赖任何外部 API / 网络 / 数据库。
+覆盖范围：
+  - ResearchOrchestrator._build_sections / _event
+  - ResearchExecutor._combine_search_results / _extract_search_sources
+  - ReportGenerator._limit_input_length / _format_analyses_text / _collect_step_analyses
+  - VerifierService._deterministic_verify / _parse_json
+  - ResearchPlanner._parse_plan_response / _get_default_plan
+  - ContentExtractionService._extract_content_sync (HTML 清洗，本地字符串)
+  - DeepSeekService._truncate_prompt / _build_payload
+"""
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+
+# ── 避免导入时触发真实 DB / env 初始化 ──────────────────────────────────────
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_logic.db")
+os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
+
+# ── 被测模块 ─────────────────────────────────────────────────────────────────
+from backend.app.agents.report_generator import ReportGenerator
+from backend.app.agents.research_planner import ResearchPlanner
+from backend.app.agents.research_executor import ResearchExecutor
+from backend.app.core.orchestrator import ResearchOrchestrator
+from backend.app.models.research_task import Citation
+from backend.app.services.content_extraction_service import ContentExtractionService
+from backend.app.services.deepseek_service import DeepSeekService
+from backend.app.services.verifier_service import VerifierService
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ResearchOrchestrator
+# ═══════════════════════════════════════════════════════════════════
+
+class TestBuildSections:
+    orch = ResearchOrchestrator()
+
+    def test_basic_plan_creates_correct_sections(self):
+        plan = [
+            {
+                "step": 1,
+                "title": "背景调研",
+                "description": "基础搜索",
+                "tool": "tavily_search",
+                "search_queries": ["AI 发展", "AI 历史"],
+                "expected_outcome": "了解背景",
+            }
+        ]
+        sections = self.orch._build_sections(plan)
+        assert len(sections) == 1
+        s = sections[0]
+        assert s.step == 1
+        assert s.title == "背景调研"
+        assert s.tool == "tavily_search"
+        assert s.search_queries == ["AI 发展", "AI 历史"]
+        assert s.expected_outcome == "了解背景"
+
+    def test_missing_step_falls_back_to_index(self):
+        plan = [{"title": "无步骤编号"}]
+        sections = self.orch._build_sections(plan)
+        assert sections[0].step == 1
+
+    def test_missing_tool_defaults_to_comprehensive_search(self):
+        plan = [{"step": 1, "title": "无工具"}]
+        sections = self.orch._build_sections(plan)
+        assert sections[0].tool == "comprehensive_search"
+
+    def test_non_string_queries_are_filtered_out(self):
+        plan = [{"step": 1, "title": "t", "search_queries": ["valid", 123, None]}]
+        sections = self.orch._build_sections(plan)
+        assert sections[0].search_queries == ["valid"]
+
+    def test_empty_plan_returns_empty_list(self):
+        assert self.orch._build_sections([]) == []
+
+    def test_multiple_steps_preserve_order(self):
+        plan = [
+            {"step": 3, "title": "C"},
+            {"step": 1, "title": "A"},
+            {"step": 2, "title": "B"},
+        ]
+        sections = self.orch._build_sections(plan)
+        assert [s.title for s in sections] == ["C", "A", "B"]
+
+    def test_each_section_gets_unique_id(self):
+        plan = [{"step": i, "title": f"step {i}"} for i in range(1, 4)]
+        sections = self.orch._build_sections(plan)
+        ids = [s.id for s in sections]
+        assert len(set(ids)) == 3
+
+
+class TestEventHelper:
+    orch = ResearchOrchestrator()
+
+    def test_event_contains_all_keys(self):
+        event = self.orch._event("planning", "开始规划", {"key": "value"})
+        assert event == {"type": "planning", "message": "开始规划", "data": {"key": "value"}}
+
+    def test_event_data_can_be_none(self):
+        event = self.orch._event("done", "完成", None)
+        assert event["data"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ResearchExecutor
+# ═══════════════════════════════════════════════════════════════════
+
+class TestCombineSearchResults:
+    executor = ResearchExecutor()
+
+    def test_merges_same_source_across_queries(self):
+        results = {
+            "q1": {"web": [{"title": "A"}]},
+            "q2": {"web": [{"title": "B"}]},
+        }
+        combined = self.executor._combine_search_results(results)
+        assert len(combined["web"]) == 2
+
+    def test_merges_different_sources(self):
+        results = {
+            "q1": {"web": [{"title": "A"}], "academic": [{"title": "X"}]},
+        }
+        combined = self.executor._combine_search_results(results)
+        assert "web" in combined
+        assert "academic" in combined
+
+    def test_empty_input_returns_empty_dict(self):
+        assert self.executor._combine_search_results({}) == {}
+
+    def test_empty_source_list_is_preserved(self):
+        results = {"q1": {"web": []}}
+        combined = self.executor._combine_search_results(results)
+        assert combined["web"] == []
+
+
+class TestExtractSearchSources:
+    executor = ResearchExecutor()
+
+    def test_extracts_title_link_source_query(self):
+        search_result = {
+            "web": [
+                {"title": "Page A", "link": "https://a.com", "snippet": "..."},
+                {"title": "Page B", "link": "https://b.com", "snippet": "..."},
+            ]
+        }
+        sources = self.executor._extract_search_sources(search_result, "my query")
+        assert sources[0]["title"] == "Page A"
+        assert sources[0]["link"] == "https://a.com"
+        assert sources[0]["source"] == "web"
+        assert sources[0]["query"] == "my query"
+
+    def test_limits_to_three_per_source(self):
+        items = [{"title": f"T{i}", "link": f"https://{i}.com"} for i in range(6)]
+        sources = self.executor._extract_search_sources({"web": items}, "q")
+        assert len(sources) == 3
+
+    def test_skips_items_without_title_or_link(self):
+        search_result = {
+            "web": [
+                {"title": "OK", "link": "https://ok.com"},
+                {"snippet": "no title or link"},
+            ]
+        }
+        sources = self.executor._extract_search_sources(search_result, "q")
+        assert len(sources) == 1
+
+    def test_empty_result_returns_empty_list(self):
+        assert self.executor._extract_search_sources({}, "q") == []
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ReportGenerator
+# ═══════════════════════════════════════════════════════════════════
+
+class TestLimitInputLength:
+    gen = ReportGenerator()
+
+    def test_short_text_is_unchanged(self):
+        text = "short"
+        assert self.gen._limit_input_length(text, max_length=100) == "short"
+
+    def test_long_text_is_truncated(self):
+        text = "x" * 2000
+        result = self.gen._limit_input_length(text, max_length=100)
+        assert len(result) <= 120  # 100 + truncation suffix
+        assert "[内容已截断]" in result
+
+    def test_exact_boundary_is_not_truncated(self):
+        text = "x" * 100
+        assert self.gen._limit_input_length(text, max_length=100) == text
+
+
+class TestFormatAnalysesText:
+    gen = ReportGenerator()
+
+    def test_formats_with_bold_titles(self):
+        analyses = [{"title": "步骤一", "analysis": "内容A"}]
+        result = self.gen._format_analyses_text(analyses)
+        assert "**步骤一**" in result
+        assert "内容A" in result
+
+    def test_multiple_analyses_joined_by_double_newline(self):
+        analyses = [
+            {"title": "A", "analysis": "a"},
+            {"title": "B", "analysis": "b"},
+        ]
+        result = self.gen._format_analyses_text(analyses)
+        assert "\n\n" in result
+        assert result.index("**A**") < result.index("**B**")
+
+    def test_empty_list_returns_empty_string(self):
+        assert self.gen._format_analyses_text([]) == ""
+
+
+class TestCollectStepAnalyses:
+    gen = ReportGenerator()
+
+    def test_only_completed_steps_are_collected(self):
+        results = [
+            {"status": "completed", "title": "Step 1", "analysis": "ok", "citations": []},
+            {"status": "failed",    "title": "Step 2", "analysis": "no", "citations": []},
+        ]
+        analyses = self.gen._collect_step_analyses(results)
+        assert len(analyses) == 1
+        assert analyses[0]["title"] == "Step 1"
+
+    def test_citations_are_appended_to_analysis(self):
+        results = [
+            {
+                "status": "completed",
+                "title": "Step 1",
+                "analysis": "分析内容",
+                "citations": [{"title": "来源A", "link": "https://a.com"}],
+            }
+        ]
+        analyses = self.gen._collect_step_analyses(results)
+        assert "来源A" in analyses[0]["analysis"]
+        assert "https://a.com" in analyses[0]["analysis"]
+
+    def test_citation_limit_is_five(self):
+        citations = [{"title": f"S{i}", "link": f"https://{i}.com"} for i in range(10)]
+        results = [{"status": "completed", "title": "T", "analysis": "A", "citations": citations}]
+        analyses = self.gen._collect_step_analyses(results)
+        # 只有前 5 个 citation 被追加
+        assert analyses[0]["analysis"].count("https://") == 5
+
+
+# ═══════════════════════════════════════════════════════════════════
+# VerifierService
+# ═══════════════════════════════════════════════════════════════════
+
+class TestDeterministicVerify:
+    svc = VerifierService()
+
+    def _verify(self, analysis="ok", citations=None, evidence="ev " * 30):
+        if citations is None:
+            citations = [
+                Citation(title="A", link="https://a.com", source="web"),
+                Citation(title="B", link="https://b.com", source="web"),
+            ]
+        return self.svc._deterministic_verify(
+            analysis=analysis, citations=citations, compressed_evidence=evidence
+        )
+
+    def test_passes_when_all_conditions_met(self):
+        result = self._verify()
+        assert result["passed"] is True
+        assert result["issues"] == []
+        assert result["score"] == 1.0
+        assert result["method"] == "deterministic_fallback"
+
+    def test_fails_on_empty_analysis(self):
+        result = self._verify(analysis="")
+        assert result["passed"] is False
+        assert any("分析" in issue for issue in result["issues"])
+
+    def test_fails_on_fewer_than_two_citations(self):
+        result = self._verify(citations=[Citation(title="A", link="https://a.com", source="web")])
+        assert result["passed"] is False
+        assert any("来源" in issue for issue in result["issues"])
+
+    def test_fails_on_short_evidence(self):
+        result = self._verify(evidence="short")
+        assert result["passed"] is False
+        assert any("证据" in issue for issue in result["issues"])
+
+    def test_score_decreases_with_more_issues(self):
+        r_zero = self._verify()
+        r_one  = self._verify(analysis="")
+        r_two  = self._verify(analysis="", citations=[])
+        assert r_zero["score"] > r_one["score"] > r_two["score"]
+
+
+class TestParseJson:
+    svc = VerifierService()
+
+    def test_parses_plain_json(self):
+        raw = '{"passed": true, "score": 0.9}'
+        result = self.svc._parse_json(raw)
+        assert result["passed"] is True
+
+    def test_parses_fenced_json(self):
+        raw = "```json\n{\"passed\": false}\n```"
+        result = self.svc._parse_json(raw)
+        assert result["passed"] is False
+
+    def test_returns_none_on_invalid_json(self):
+        assert self.svc._parse_json("not json") is None
+
+    def test_returns_none_when_root_is_list(self):
+        assert self.svc._parse_json("[1, 2, 3]") is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ResearchPlanner
+# ═══════════════════════════════════════════════════════════════════
+
+class TestParsePlanResponse:
+    planner = ResearchPlanner()
+
+    def _make_plan(self, steps=None):
+        if steps is None:
+            steps = [{"step": 1, "title": "背景调研"}]
+        return {"research_plan": steps}
+
+    def test_parses_plain_json_string(self):
+        raw = json.dumps(self._make_plan())
+        plan = self.planner._parse_plan_response(raw)
+        assert len(plan) == 1
+        assert plan[0]["title"] == "背景调研"
+
+    def test_parses_markdown_fenced_json(self):
+        raw = "```json\n" + json.dumps(self._make_plan()) + "\n```"
+        plan = self.planner._parse_plan_response(raw)
+        assert plan[0]["step"] == 1
+
+    def test_returns_empty_list_when_key_missing(self):
+        raw = json.dumps({"other_key": []})
+        plan = self.planner._parse_plan_response(raw)
+        assert plan == []
+
+    def test_preserves_multiple_steps(self):
+        steps = [{"step": i, "title": f"Step {i}"} for i in range(1, 4)]
+        raw = json.dumps({"research_plan": steps})
+        plan = self.planner._parse_plan_response(raw)
+        assert len(plan) == 3
+
+
+class TestGetDefaultPlan:
+    planner = ResearchPlanner()
+
+    def test_returns_three_steps(self):
+        plan = self.planner._get_default_plan("AI 趋势")
+        assert len(plan) == 3
+
+    def test_query_is_embedded_in_search_queries(self):
+        plan = self.planner._get_default_plan("量子计算")
+        all_queries = [q for step in plan for q in step["search_queries"]]
+        assert any("量子计算" in q for q in all_queries)
+
+    def test_all_steps_have_required_keys(self):
+        plan = self.planner._get_default_plan("test")
+        for step in plan:
+            for key in ("step", "title", "description", "tool", "search_queries", "expected_outcome"):
+                assert key in step
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ContentExtractionService — HTML 清洗（无网络）
+# ═══════════════════════════════════════════════════════════════════
+
+class TestContentExtraction:
+    svc = ContentExtractionService()
+
+    def _mock_response(self, monkeypatch, html: str, content_type: str = "text/html"):
+        import requests
+
+        class FakeResponse:
+            status_code = 200
+            text = html
+            headers = {"Content-Type": content_type}
+
+            def raise_for_status(self):
+                pass
+
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: FakeResponse())
+
+    def test_strips_script_tags(self, monkeypatch):
+        html = "<html><body>Hello<script>alert(1)</script> World</body></html>"
+        self._mock_response(monkeypatch, html)
+        result = self.svc._extract_content_sync("https://example.com")
+        assert "alert" not in result
+        assert "Hello" in result
+
+    def test_strips_style_tags(self, monkeypatch):
+        html = "<html><body>Text<style>.foo{color:red}</style></body></html>"
+        self._mock_response(monkeypatch, html)
+        result = self.svc._extract_content_sync("https://example.com")
+        assert "color" not in result
+
+    def test_strips_html_tags(self, monkeypatch):
+        html = "<html><body><h1>Title</h1><p>Content</p></body></html>"
+        self._mock_response(monkeypatch, html)
+        result = self.svc._extract_content_sync("https://example.com")
+        assert "<h1>" not in result
+        assert "Title" in result
+        assert "Content" in result
+
+    def test_decodes_html_entities(self, monkeypatch):
+        html = "<html><body>&lt;b&gt;bold&lt;/b&gt;</body></html>"
+        self._mock_response(monkeypatch, html)
+        result = self.svc._extract_content_sync("https://example.com")
+        assert "<b>" in result
+
+    def test_truncates_to_3000_chars(self, monkeypatch):
+        html = "<html><body>" + "x" * 5000 + "</body></html>"
+        self._mock_response(monkeypatch, html)
+        result = self.svc._extract_content_sync("https://example.com")
+        assert len(result) <= 3000
+
+    def test_non_html_content_returned_as_text(self, monkeypatch):
+        self._mock_response(monkeypatch, "plain text content", content_type="text/plain")
+        result = self.svc._extract_content_sync("https://example.com")
+        assert result == "plain text content"
+
+    def test_request_exception_returns_empty_string(self, monkeypatch):
+        import requests
+
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: (_ for _ in ()).throw(
+            requests.exceptions.ConnectionError("fail")
+        ))
+        result = self.svc._extract_content_sync("https://example.com")
+        assert result == ""
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DeepSeekService
+# ═══════════════════════════════════════════════════════════════════
+
+class TestTruncatePrompt:
+    svc = DeepSeekService()
+
+    def test_short_prompt_is_unchanged(self):
+        text = "hello"
+        assert self.svc._truncate_prompt(text) == text
+
+    def test_long_prompt_is_truncated_to_2000(self):
+        text = "x" * 3000
+        result = self.svc._truncate_prompt(text)
+        assert len(result) <= 2100  # 2000 + suffix
+        assert "请基于以上内容生成简洁摘要" in result
+
+    def test_exact_2000_chars_is_not_truncated(self):
+        text = "x" * 2000
+        assert self.svc._truncate_prompt(text) == text
+
+
+class TestBuildPayload:
+    svc = DeepSeekService()
+
+    def test_payload_has_required_keys(self):
+        payload = self.svc._build_payload("hello", max_tokens=500, stream=False)
+        assert payload["model"] == "deepseek-chat"
+        assert payload["stream"] is False
+        assert payload["messages"][0]["content"] == "hello"
+
+    def test_max_tokens_is_capped_at_2000(self):
+        payload = self.svc._build_payload("x", max_tokens=9999, stream=False)
+        assert payload["max_tokens"] == 2000
+
+    def test_stream_flag_is_forwarded(self):
+        payload = self.svc._build_payload("x", max_tokens=100, stream=True)
+        assert payload["stream"] is True

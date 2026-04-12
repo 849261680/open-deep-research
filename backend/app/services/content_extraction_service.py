@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 import re
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class ContentExtractionService:
@@ -29,11 +32,10 @@ class ContentExtractionService:
                 url,
                 headers=self.headers,
                 timeout=8,
-                verify=False,
             )
             response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            print(f"⚠️ 内容抓取失败 {url}: {exc}")
+        except requests.RequestException as exc:
+            logger.warning("内容抓取失败 %s: %s", url, exc)
             return ""
 
         content_type = response.headers.get("Content-Type", "")

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from collections.abc import AsyncGenerator
@@ -9,6 +10,8 @@ from requests.exceptions import Timeout
 from ..utils.env import load_project_env
 
 load_project_env()
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekService:
@@ -33,31 +36,24 @@ class DeepSeekService:
         max_prompt_length = 2000
         if len(prompt) > max_prompt_length:
             prompt = prompt[:max_prompt_length] + "...\n\n请基于以上内容生成简洁摘要。"
-            print(f"⚠️ [DeepSeek调试] 提示词过长，已截断至 {max_prompt_length} 字符")
+            logger.warning("提示词过长，已截断至 %d 字符", max_prompt_length)
         return prompt
 
     def generate_response_sync(self, prompt: str, max_tokens: int = 2000) -> str:
         """同步调用 DeepSeek，供同步 LangChain 路径和线程池包装使用。"""
-        print(f"🚀 [DeepSeek调试] 开始生成响应，提示词长度: {len(prompt)}")
+        logger.debug("开始生成响应，提示词长度: %d", len(prompt))
 
         if not self.api_key:
-            print("❌ [DeepSeek调试] API密钥未找到")
             raise ValueError("DeepSeek API key not found")
 
         prompt = self._truncate_prompt(prompt)
         payload = self._build_payload(prompt, max_tokens, stream=False)
 
-        print("📝 [DeepSeek调试] API 请求详情:")
-        print(f"   - 输入长度: {len(prompt)} 字符")
-        print(f"   - 最大输出: {payload['max_tokens']} tokens")
-        print(f"   - 模型: {payload['model']}")
-        print(f"   - 提示词预览: {prompt[:100]}...")
-
         max_retries = 2
         response: requests.Response | None = None
         for attempt in range(max_retries + 1):
             try:
-                print(f"🔄 [DeepSeek调试] API 调用尝试 {attempt + 1}/{max_retries + 1}")
+                logger.debug("API 调用尝试 %d/%d", attempt + 1, max_retries + 1)
                 start_time = time.time()
                 response = requests.post(
                     f"{self.base_url}/chat/completions",
@@ -65,12 +61,11 @@ class DeepSeekService:
                     json=payload,
                     timeout=90,
                 )
-                end_time = time.time()
-                print(f"⏱️ [DeepSeek调试] API 响应时间: {end_time - start_time:.2f} 秒")
-                print(f"📊 [DeepSeek调试] 响应状态码: {response.status_code}")
+                elapsed = time.time() - start_time
+                logger.debug("API 响应时间: %.2f 秒，状态码: %d", elapsed, response.status_code)
 
                 if response.status_code != 200:
-                    print(f"❌ [DeepSeek调试] API 错误响应: {response.text}")
+                    logger.error("API 错误响应: %s", response.text)
                     if attempt == max_retries:
                         break
                     time.sleep(2)
@@ -78,26 +73,19 @@ class DeepSeekService:
 
                 result = response.json()
                 response_content = result["choices"][0]["message"]["content"]
-                print(
-                    f"✅ [DeepSeek调试] API 调用成功，响应长度: {len(response_content)} 字符"
-                )
-                print(f"📝 [DeepSeek调试] 响应预览: {response_content[:100]}...")
+                logger.debug("API 调用成功，响应长度: %d 字符", len(response_content))
                 return response_content
             except Timeout:
                 if attempt == max_retries:
-                    print("⏰ [DeepSeek调试] API 请求超时，已重试多次")
+                    logger.error("API 请求超时，已重试多次")
                     raise Timeout("DeepSeek API request timed out")
-                print(
-                    f"⏰ [DeepSeek调试] 请求超时，将重试... ({attempt + 1}/{max_retries})"
-                )
+                logger.warning("请求超时，将重试... (%d/%d)", attempt + 1, max_retries)
                 time.sleep(2)
             except Exception as e:
                 if attempt == max_retries:
-                    print(f"❌ [DeepSeek调试] API 连接失败: {e}")
+                    logger.error("API 连接失败: %s", e)
                     raise
-                print(
-                    f"⚠️ [DeepSeek调试] 连接失败，将重试... ({attempt + 1}/{max_retries})"
-                )
+                logger.warning("连接失败，将重试... (%d/%d)", attempt + 1, max_retries)
                 time.sleep(2)
 
         if response is None:

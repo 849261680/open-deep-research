@@ -1,7 +1,10 @@
 import json
+import logging
 from collections.abc import Callable
 
 from ..chains.research_chains import research_chains
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchPlanner:
@@ -76,7 +79,7 @@ class ResearchPlanner:
 
             return plan
         except Exception as e:
-            print(f"Research planning error: {e}")
+            logger.error("Research planning error: %s", e)
 
             if callback:
                 await callback(

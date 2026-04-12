@@ -1,7 +1,10 @@
+import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
 
 from langchain.callbacks.base import BaseCallbackHandler
+
+logger = logging.getLogger(__name__)
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -87,7 +90,7 @@ class StreamingManager:
             yield {"type": "plan", "message": "研究计划制定完成", "data": plan}
 
         except Exception as e:
-            print(f"Research planning error: {e}")
+            logger.error("Research planning error: %s", e)
 
             # AI生成失败，使用默认计划 - 为什么需要默认计划：确保服务的可靠性
             default_plan = self._get_default_plan(query)

@@ -1,10 +1,14 @@
+import asyncio
 import json
+import logging
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel
 from pydantic import Field
 
 from ..services.search_tools import search_tools
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSearchInput(BaseModel):
@@ -49,42 +53,11 @@ class GoogleSearchTool(BaseTool):
     args_schema: type[BaseModel] = GoogleSearchInput
 
     async def _arun(self, query: str, num_results: int = 10) -> str:
-        """Search Google asynchronously."""
         results = await search_tools.google_search(query, num_results)
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def _run(self, query: str, num_results: int = 10) -> str:
-        """Search Google synchronously."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps(
-                    [
-                        {
-                            "title": "搜索功能暂时不可用",
-                            "link": "",
-                            "snippet": "请使用异步调用",
-                            "source": "google",
-                        }
-                    ],
-                    ensure_ascii=False,
-                )
-            return loop.run_until_complete(self._arun(query, num_results))
-        except RuntimeError:
-            return json.dumps(
-                [
-                    {
-                        "title": "搜索功能暂时不可用",
-                        "link": "",
-                        "snippet": "请使用异步调用",
-                        "source": "google",
-                    }
-                ],
-                ensure_ascii=False,
-            )
+        return asyncio.run(self._arun(query, num_results))
 
 
 class TavilySearchTool(BaseTool):
@@ -95,42 +68,11 @@ class TavilySearchTool(BaseTool):
     args_schema: type[BaseModel] = TavilySearchInput
 
     async def _arun(self, query: str, num_results: int = 10) -> str:
-        """Search Tavily asynchronously."""
         results = await search_tools.tavily_search(query, num_results)
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def _run(self, query: str, num_results: int = 10) -> str:
-        """Search Tavily synchronously."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps(
-                    [
-                        {
-                            "title": "搜索功能暂时不可用",
-                            "link": "",
-                            "snippet": "请使用异步调用",
-                            "source": "tavily",
-                        }
-                    ],
-                    ensure_ascii=False,
-                )
-            return loop.run_until_complete(self._arun(query, num_results))
-        except RuntimeError:
-            return json.dumps(
-                [
-                    {
-                        "title": "搜索功能暂时不可用",
-                        "link": "",
-                        "snippet": "请使用异步调用",
-                        "source": "tavily",
-                    }
-                ],
-                ensure_ascii=False,
-            )
+        return asyncio.run(self._arun(query, num_results))
 
 
 class DuckDuckGoSearchTool(BaseTool):
@@ -141,42 +83,11 @@ class DuckDuckGoSearchTool(BaseTool):
     args_schema: type[BaseModel] = DuckDuckGoSearchInput
 
     async def _arun(self, query: str, num_results: int = 10) -> str:
-        """Search DuckDuckGo asynchronously."""
         results = await search_tools.duckduckgo_search(query, num_results)
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def _run(self, query: str, num_results: int = 10) -> str:
-        """Search DuckDuckGo synchronously."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps(
-                    [
-                        {
-                            "title": "搜索功能暂时不可用",
-                            "link": "",
-                            "snippet": "请使用异步调用",
-                            "source": "duckduckgo",
-                        }
-                    ],
-                    ensure_ascii=False,
-                )
-            return loop.run_until_complete(self._arun(query, num_results))
-        except RuntimeError:
-            return json.dumps(
-                [
-                    {
-                        "title": "搜索功能暂时不可用",
-                        "link": "",
-                        "snippet": "请使用异步调用",
-                        "source": "duckduckgo",
-                    }
-                ],
-                ensure_ascii=False,
-            )
+        return asyncio.run(self._arun(query, num_results))
 
 
 class WikipediaSearchTool(BaseTool):
@@ -187,42 +98,11 @@ class WikipediaSearchTool(BaseTool):
     args_schema: type[BaseModel] = WikipediaSearchInput
 
     async def _arun(self, query: str, num_results: int = 5) -> str:
-        """Search Wikipedia asynchronously."""
         results = await search_tools.wikipedia_search(query, num_results)
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def _run(self, query: str, num_results: int = 5) -> str:
-        """Search Wikipedia synchronously."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps(
-                    [
-                        {
-                            "title": "搜索功能暂时不可用",
-                            "link": "",
-                            "snippet": "请使用异步调用",
-                            "source": "wikipedia",
-                        }
-                    ],
-                    ensure_ascii=False,
-                )
-            return loop.run_until_complete(self._arun(query, num_results))
-        except RuntimeError:
-            return json.dumps(
-                [
-                    {
-                        "title": "搜索功能暂时不可用",
-                        "link": "",
-                        "snippet": "请使用异步调用",
-                        "source": "wikipedia",
-                    }
-                ],
-                ensure_ascii=False,
-            )
+        return asyncio.run(self._arun(query, num_results))
 
 
 class ComprehensiveSearchTool(BaseTool):
@@ -233,26 +113,11 @@ class ComprehensiveSearchTool(BaseTool):
     args_schema: type[BaseModel] = ComprehensiveSearchInput
 
     async def _arun(self, query: str) -> str:
-        """Perform comprehensive search asynchronously."""
         results = await search_tools.comprehensive_search(query)
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def _run(self, query: str) -> str:
-        """Perform comprehensive search synchronously."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环已经在运行，返回一个简单的结果
-                return json.dumps(
-                    {"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False
-                )
-            return loop.run_until_complete(self._arun(query))
-        except RuntimeError:
-            return json.dumps(
-                {"web": [], "wikipedia": [], "academic": []}, ensure_ascii=False
-            )
+        return asyncio.run(self._arun(query))
 
 
 # 导出所有工具，只保留高性能工具

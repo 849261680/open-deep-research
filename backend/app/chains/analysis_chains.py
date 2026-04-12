@@ -1,8 +1,12 @@
+import logging
+
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document
 
 from .base_chains import base_chain_manager
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisChains:
@@ -110,7 +114,7 @@ class AnalysisChains:
         try:
             return await self.llm._acall(analysis_prompt)
         except Exception as e:  # noqa: BLE001
-            print(f"简化摘要生成失败: {e}")
+            logger.error("简化摘要生成失败: %s", e)
             return f"无法生成步骤'{step_title}'的分析摘要，但搜索到了 {len(documents)} 个相关结果。"
 
 

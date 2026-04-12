@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from collections.abc import Callable
 
@@ -13,6 +14,8 @@ from .report_generator import ReportGenerator
 from .research_executor import ResearchExecutor
 from .research_planner import ResearchPlanner
 from .streaming_handler import StreamingManager
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainResearchAgent:
@@ -47,28 +50,19 @@ class LangChainResearchAgent:
         """
         if not self._initialized:
             try:
-                print("正在初始化LLM...")
+                logger.info("正在初始化LLM...")
                 self.llm = DeepSeekLLM()
-                print("LLM初始化完成")
-
-                print("正在初始化Memory...")
+                logger.info("正在初始化Memory...")
                 self.memory = ConversationBufferMemory(
                     memory_key="chat_history", return_messages=True
                 )
-                print("Memory初始化完成")
-
-                print("正在创建Agent...")
+                logger.info("正在创建Agent...")
                 self.agent_executor = self._create_agent()
-                print("Agent创建完成")
-
                 self._initialized = True
-                print("Agent完全初始化完成")
+                logger.info("Agent完全初始化完成")
             except Exception as e:
-                print(f"Agent initialization error: {e}")
-                import traceback
-
-                traceback.print_exc()
-                raise e
+                logger.exception("Agent initialization error: %s", e)
+                raise
 
     def _create_agent(self) -> AgentExecutor:
         """创建ReAct代理
