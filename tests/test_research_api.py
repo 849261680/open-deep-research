@@ -15,11 +15,13 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 from backend.app.core.deps import get_current_user
 from backend.app.main import app
 from backend.app.models.research_task import Citation
-from backend.app.models.research_task import ResearchSection
 from backend.app.models.research_task import ResearchTask
 from backend.app.models.research_task import ResearchTaskStatus
 from backend.app.models.user import User
 from backend.app.core.orchestrator import ResearchOrchestrator
+from backend.app.research.agent import ResearchAgent
+from backend.app.research.models import ResearchSource
+from backend.app.research.models import SubQueryContext
 from backend.app.services.verifier_service import VerifierService
 
 
@@ -244,140 +246,34 @@ def test_anonymous_history_only_returns_anonymous_tasks(tmp_path) -> None:
     assert anonymous_task_ids == ["anon-task"]
 
 
-def test_orchestrator_retries_failed_section(monkeypatch, tmp_path) -> None:
+def test_resume_reruns_incomplete_task_with_research_agent(monkeypatch, tmp_path) -> None:
     orchestrator = ResearchOrchestrator()
     orchestrator.repository.db_path = str(tmp_path / "research.db")
     orchestrator.repository._ensure_db()
 
-    task = ResearchTask(
-        id="task-1",
-        query="retry query",
-        status=ResearchTaskStatus.RESEARCHING,
-        sections=[
-            ResearchSection(
-                id="section-1",
-                step=1,
-                title="Step 1",
-                description="desc",
-                search_queries=["retry query"],
-            )
-        ],
-    )
-
-    call_count = {"count": 0}
-
-    async def fake_execute(step, query):  # noqa: ANN001
-        call_count["count"] += 1
-        yield {
-            "type": "step_complete",
-            "message": "failed" if call_count["count"] == 1 else "completed",
-            "data": {
-                "step": 1,
-                "title": "Step 1",
-                "status": "failed" if call_count["count"] == 1 else "completed",
-                "analysis": "analysis text",
-                "search_results": {},
-                "search_sources": [],
-            },
-        }
-
-    async def fake_verify(**kwargs):  # noqa: ANN003
-        return {"passed": True, "issues": [], "score": 1.0, "method": "test"}
-
-    monkeypatch.setattr(
-        orchestrator.executor,
-        "execute_research_step_with_updates",
-        fake_execute,
-    )
-    monkeypatch.setattr(
-        "backend.app.core.orchestrator.verifier_service.verify_section",
-        fake_verify,
-    )
-
-    events = []
-
-    async def collect() -> None:
-        async for event in orchestrator._run_section(task, task.sections[0]):
-            events.append(event)
-
-    import asyncio
-
-    asyncio.run(collect())
-
-    assert any(event["type"] == "step_retry" for event in events)
-    assert any(
-        event["type"] == "step_complete"
-        and event["data"]["status"] == "completed"
-        for event in events
-    )
-
-
-def test_resume_only_executes_pending_sections(monkeypatch, tmp_path) -> None:
-    orchestrator = ResearchOrchestrator()
-    orchestrator.repository.db_path = str(tmp_path / "research.db")
-    orchestrator.repository._ensure_db()
-
-    completed_section = ResearchSection(
-        id="section-done",
-        step=1,
-        title="Done",
-        description="done",
-        status="completed",
-        analysis="existing analysis",
-    )
-    pending_section = ResearchSection(
-        id="section-pending",
-        step=2,
-        title="Pending",
-        description="pending",
-        search_queries=["pending"],
-    )
     task = ResearchTask(
         id="task-resume",
         user_id=1,
         query="resume query",
         status=ResearchTaskStatus.RESEARCHING,
-        sections=[completed_section, pending_section],
     )
     orchestrator.repository.save_task(task)
 
-    executed_sections: list[str] = []
-
-    async def fake_execute(step, query):  # noqa: ANN001
-        executed_sections.append(step["id"])
+    async def fake_agent_run(self, task):  # noqa: ANN001
+        task.status = ResearchTaskStatus.COMPLETED
+        task.final_report = "# rerun"
         yield {
-            "type": "step_complete",
-            "message": "completed",
+            "type": "report_complete",
+            "message": "done",
             "data": {
-                "step": step["step"],
-                "title": step["title"],
+                "id": task.id,
+                "query": task.query,
                 "status": "completed",
-                "analysis": f"analysis for {step['id']}",
-                "search_results": {},
-                "search_sources": [],
+                "report": task.final_report,
             },
         }
 
-    async def fake_verify(**kwargs):  # noqa: ANN003
-        return {"passed": True, "issues": [], "score": 1.0, "method": "test"}
-
-    async def fake_report(results, query):  # noqa: ANN001
-        return f"report for {query} with {len(results)} sections"
-
-    monkeypatch.setattr(
-        orchestrator.executor,
-        "execute_research_step_with_updates",
-        fake_execute,
-    )
-    monkeypatch.setattr(
-        "backend.app.core.orchestrator.verifier_service.verify_section",
-        fake_verify,
-    )
-    monkeypatch.setattr(
-        orchestrator.report_generator,
-        "generate_final_report",
-        fake_report,
-    )
+    monkeypatch.setattr("backend.app.core.orchestrator.ResearchAgent.run", fake_agent_run)
 
     events = []
 
@@ -389,8 +285,114 @@ def test_resume_only_executes_pending_sections(monkeypatch, tmp_path) -> None:
 
     asyncio.run(collect())
 
-    assert executed_sections == ["section-pending"]
+    assert events[0]["type"] == "resume"
     report_complete = next(
         event for event in events if event["type"] == "report_complete"
     )
-    assert len(report_complete["data"]["results"]) == 2
+    assert report_complete["data"]["report"] == "# rerun"
+
+
+def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -> None:
+    orchestrator = ResearchOrchestrator()
+    orchestrator.repository.db_path = str(tmp_path / "research.db")
+    orchestrator.repository._ensure_db()
+
+    async def fake_agent_run(self, task):  # noqa: ANN001
+        task.status = ResearchTaskStatus.COMPLETED
+        task.final_report = "# report"
+        yield {
+            "type": "report_complete",
+            "message": "done",
+            "data": {
+                "id": task.id,
+                "query": task.query,
+                "status": task.status.value,
+                "report": task.final_report,
+            },
+        }
+
+    monkeypatch.setattr("backend.app.core.orchestrator.ResearchAgent.run", fake_agent_run)
+
+    events = []
+
+    async def collect() -> None:
+        async for event in orchestrator.run("new query", user_id=1):
+            events.append(event)
+
+    import asyncio
+
+    asyncio.run(collect())
+
+    assert events[0]["type"] == "planning"
+    assert events[0]["data"]["task_id"] == events[1]["data"]["id"]
+    assert events[0]["data"]["query"] == "new query"
+    assert orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)
+
+
+def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
+    agent = ResearchAgent(query="DeepSeek enterprise", max_concurrency=1)
+    task = ResearchTask(id="task-gptr", query="DeepSeek enterprise")
+    context = SubQueryContext(
+        step=1,
+        query="DeepSeek 企业落地案例有哪些？",
+        context="发现 A",
+        sources=[
+            ResearchSource(
+                title="Source A",
+                link="https://example.com/a",
+                source="web",
+                query="DeepSeek enterprise case study",
+                summary="摘要 A",
+            )
+        ],
+    )
+
+    async def fake_conduct_research(on_event=None):  # noqa: ANN001
+        if on_event:
+            await on_event(
+                {
+                    "type": "plan",
+                    "message": "子查询规划完成",
+                    "data": [context.query],
+                }
+            )
+            await on_event(
+                {
+                    "type": "step_complete",
+                    "message": "done",
+                    "data": {"step": 1, "title": context.query},
+                }
+            )
+        agent.research_sources = context.sources
+        return [context]
+
+    async def fake_write_report(**kwargs):  # noqa: ANN003
+        agent.cost_tracker.track_llm_call(
+            step="report_writing",
+            prompt="prompt",
+            response="response",
+        )
+        return "# report"
+
+    monkeypatch.setattr(agent.conductor, "conduct_research", fake_conduct_research)
+    monkeypatch.setattr(agent.writer, "write_report", fake_write_report)
+
+    events = []
+
+    async def collect() -> None:
+        async for event in agent.run(task):
+            events.append(event)
+
+    import asyncio
+
+    asyncio.run(collect())
+
+    report_complete = next(
+        event for event in events if event["type"] == "report_complete"
+    )
+    assert report_complete["data"]["architecture"] == "gpt_researcher"
+    assert report_complete["data"]["report"] == "# report"
+    assert report_complete["data"]["cost_summary"]["total_tokens"] > 0
+    assert report_complete["data"]["results"][0]["title"] == context.query
+    assert task.cost_summary["total_tokens"] > 0
+    assert task.sections[0].tool == "research_conductor"

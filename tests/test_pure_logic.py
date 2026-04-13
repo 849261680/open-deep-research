@@ -1,7 +1,7 @@
 """
 纯逻辑单元测试 — 不依赖任何外部 API / 网络 / 数据库。
 覆盖范围：
-  - ResearchOrchestrator._build_sections / _event
+  - ResearchOrchestrator._event
   - ResearchExecutor._combine_search_results / _extract_search_sources
   - ReportGenerator._limit_input_length / _format_analyses_text / _collect_step_analyses
   - VerifierService._deterministic_verify / _parse_json
@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-
-import pytest
 
 # ── 避免导入时触发真实 DB / env 初始化 ──────────────────────────────────────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_logic.db")
@@ -30,68 +28,13 @@ from backend.app.models.research_task import Citation
 from backend.app.services.content_extraction_service import ContentExtractionService
 from backend.app.services.deepseek_service import DeepSeekService
 from backend.app.services.verifier_service import VerifierService
+from backend.app.research.cost_tracker import CostTracker
+from backend.app.research.cost_tracker import estimate_tokens
 
 
 # ═══════════════════════════════════════════════════════════════════
 # ResearchOrchestrator
 # ═══════════════════════════════════════════════════════════════════
-
-class TestBuildSections:
-    orch = ResearchOrchestrator()
-
-    def test_basic_plan_creates_correct_sections(self):
-        plan = [
-            {
-                "step": 1,
-                "title": "背景调研",
-                "description": "基础搜索",
-                "tool": "tavily_search",
-                "search_queries": ["AI 发展", "AI 历史"],
-                "expected_outcome": "了解背景",
-            }
-        ]
-        sections = self.orch._build_sections(plan)
-        assert len(sections) == 1
-        s = sections[0]
-        assert s.step == 1
-        assert s.title == "背景调研"
-        assert s.tool == "tavily_search"
-        assert s.search_queries == ["AI 发展", "AI 历史"]
-        assert s.expected_outcome == "了解背景"
-
-    def test_missing_step_falls_back_to_index(self):
-        plan = [{"title": "无步骤编号"}]
-        sections = self.orch._build_sections(plan)
-        assert sections[0].step == 1
-
-    def test_missing_tool_defaults_to_comprehensive_search(self):
-        plan = [{"step": 1, "title": "无工具"}]
-        sections = self.orch._build_sections(plan)
-        assert sections[0].tool == "comprehensive_search"
-
-    def test_non_string_queries_are_filtered_out(self):
-        plan = [{"step": 1, "title": "t", "search_queries": ["valid", 123, None]}]
-        sections = self.orch._build_sections(plan)
-        assert sections[0].search_queries == ["valid"]
-
-    def test_empty_plan_returns_empty_list(self):
-        assert self.orch._build_sections([]) == []
-
-    def test_multiple_steps_preserve_order(self):
-        plan = [
-            {"step": 3, "title": "C"},
-            {"step": 1, "title": "A"},
-            {"step": 2, "title": "B"},
-        ]
-        sections = self.orch._build_sections(plan)
-        assert [s.title for s in sections] == ["C", "A", "B"]
-
-    def test_each_section_gets_unique_id(self):
-        plan = [{"step": i, "title": f"step {i}"} for i in range(1, 4)]
-        sections = self.orch._build_sections(plan)
-        ids = [s.id for s in sections]
-        assert len(set(ids)) == 3
-
 
 class TestEventHelper:
     orch = ResearchOrchestrator()
@@ -475,3 +418,31 @@ class TestBuildPayload:
     def test_stream_flag_is_forwarded(self):
         payload = self.svc._build_payload("x", max_tokens=100, stream=True)
         assert payload["stream"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CostTracker
+# ═══════════════════════════════════════════════════════════════════
+
+class TestCostTracker:
+    def test_estimates_tokens_from_characters(self):
+        assert estimate_tokens("") == 0
+        assert estimate_tokens("abcd") == 1
+        assert estimate_tokens("a" * 40) == 10
+
+    def test_tracks_llm_call_with_configured_rates(self):
+        tracker = CostTracker(
+            input_cost_per_1m_tokens=1.0,
+            output_cost_per_1m_tokens=2.0,
+        )
+        tracker.track_llm_call(
+            step="query_planning",
+            prompt="a" * 400,
+            response="b" * 200,
+        )
+        summary = tracker.summary()
+        assert summary["pricing_source"] == "defaults_or_env"
+        assert summary["total_input_tokens"] == 100
+        assert summary["total_output_tokens"] == 50
+        assert summary["estimated_cost_usd"] == 0.0002
+        assert summary["calls"][0]["step"] == "query_planning"

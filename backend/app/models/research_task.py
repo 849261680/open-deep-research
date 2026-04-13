@@ -66,6 +66,7 @@ class ResearchTask(BaseModel):
     status: ResearchTaskStatus = ResearchTaskStatus.PENDING
     sections: list[ResearchSection] = Field(default_factory=list)
     final_report: str = ""
+    cost_summary: dict[str, object] = Field(default_factory=dict)
     created_at: str = Field(default_factory=utc_now)
     updated_at: str = Field(default_factory=utc_now)
     completed_at: str | None = None

@@ -75,9 +75,11 @@ function AppContent() {
 
         setStreamingData(prev => [...prev, update]);
 
-        if (update.type === 'planning' && update.data?.task_id && update.data.task_id !== research.id) {
-          replaceResearchId(research.id, update.data.task_id);
-          research.id = update.data.task_id;
+        const serverTaskId = update.data?.task_id || update.data?.id;
+        if (serverTaskId && serverTaskId !== research.id) {
+          replaceResearchId(research.id, serverTaskId);
+          research.id = serverTaskId;
+          research.isTemporaryId = false;
         }
 
         // 如果研究完成，设置最终数据
@@ -114,6 +116,11 @@ function AppContent() {
           console.log('网络错误，尝试非流式API...');
           const result = await researchAPI.startResearch(query);
           const finalData = result.data || result;
+          if (finalData.id && finalData.id !== research.id) {
+            replaceResearchId(research.id, finalData.id);
+            research.id = finalData.id;
+            research.isTemporaryId = false;
+          }
           setResearchData(finalData);
           setError(null);
           updateResearch(research.id, {
@@ -195,21 +202,52 @@ function AppContent() {
 
   // 当从历史加载研究时
   useEffect(() => {
+    let cancelled = false;
+    const activeStatuses = new Set(['pending', 'in_progress', 'planning', 'researching', 'reporting']);
+
     const loadCurrentResearch = async () => {
       if (!currentResearch) {
         return;
       }
 
+      setError(null);
+      setStreamingData([]);
+      setResearchData(null);
+      setIsResearching(activeStatuses.has(currentResearch.status));
+
       if (currentResearch.result) {
         setResearchData(currentResearch.result);
-        setStreamingData([]);
-        setError(null);
         setIsResearching(false);
       } else if (currentResearch.isTemporaryId) {
+        const temporaryAgeMs = Date.now() - new Date(currentResearch.timestamp).getTime();
+        if (activeStatuses.has(currentResearch.status) && temporaryAgeMs < 5000) {
+          setStreamingData([
+            {
+              type: 'planning',
+              message: '正在创建研究任务...',
+              data: null,
+            },
+          ]);
+          setIsResearching(true);
+        } else {
+          setIsResearching(false);
+          setError('这条历史记录缺少服务器任务 ID，无法恢复。请重新发起一次研究。');
+        }
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
         return;
       } else {
         try {
           const remoteResearch = await researchAPI.getResearchTask(currentResearch.id);
+          if (cancelled) {
+            return;
+          }
+
+          const normalizedStatus = activeStatuses.has(remoteResearch.status)
+            ? 'in_progress'
+            : remoteResearch.status;
+
           if (remoteResearch.final_report) {
             const hydrated = {
               id: remoteResearch.id,
@@ -236,13 +274,29 @@ function AppContent() {
               timestamp: remoteResearch.completed_at || remoteResearch.updated_at,
             };
             setResearchData(hydrated);
+            setIsResearching(false);
             updateResearch(currentResearch.id, {
               result: hydrated,
               status: remoteResearch.status === 'completed' ? 'completed' : currentResearch.status,
             });
+          } else {
+            const nextTimestamp = remoteResearch.updated_at || currentResearch.timestamp;
+            if (
+              currentResearch.status !== normalizedStatus ||
+              currentResearch.timestamp !== nextTimestamp
+            ) {
+              updateResearch(currentResearch.id, {
+                status: normalizedStatus,
+                timestamp: nextTimestamp,
+              });
+            }
+            setIsResearching(activeStatuses.has(normalizedStatus));
           }
         } catch (err) {
           console.error('加载远程研究详情失败:', err);
+          if (!cancelled) {
+            setIsResearching(false);
+          }
         }
       }
 
@@ -252,6 +306,10 @@ function AppContent() {
     };
 
     loadCurrentResearch();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentResearch, isMobile, updateResearch]);
 
   // 判断是否显示空状态

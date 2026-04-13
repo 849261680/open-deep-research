@@ -111,7 +111,7 @@ class ReportGenerator:
             ]
         )
 
-    def _limit_input_length(self, text: str, max_length: int = 1500) -> str:
+    def _limit_input_length(self, text: str, max_length: int = 8000) -> str:
         """限制输入长度
 
         为什么需要限制长度：

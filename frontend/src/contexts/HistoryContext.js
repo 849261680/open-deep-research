@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import logger from '../services/logger';
 import { researchAPI } from '../services/api';
 import { useAuth } from './AuthContext';
@@ -25,6 +25,16 @@ export const HistoryProvider = ({ children }) => {
   const [currentResearch, setCurrentResearch] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 保存历史记录到 localStorage
+  const saveToLocalStorage = useCallback((newHistory) => {
+    try {
+      localStorage.setItem('research-history', JSON.stringify(newHistory));
+      logger.info('Saved history to localStorage', { count: newHistory.length });
+    } catch (error) {
+      logger.error('Failed to save history to localStorage', error);
+    }
+  }, []);
+
   // 从 localStorage 加载历史记录
   useEffect(() => {
     const loadHistory = async () => {
@@ -32,7 +42,16 @@ export const HistoryProvider = ({ children }) => {
       try {
         const savedHistory = localStorage.getItem('research-history');
         if (savedHistory) {
-          localHistory = JSON.parse(savedHistory);
+          localHistory = JSON.parse(savedHistory).map((item) => {
+            if (item?.isTemporaryId && item?.result?.id) {
+              return {
+                ...item,
+                id: item.result.id,
+                isTemporaryId: false,
+              };
+            }
+            return item;
+          });
           setHistory(localHistory);
           logger.info('Loaded history from localStorage', { count: localHistory.length });
         }
@@ -89,20 +108,10 @@ export const HistoryProvider = ({ children }) => {
     };
 
     loadHistory();
-  }, [authLoading, user]);
-
-  // 保存历史记录到 localStorage
-  const saveToLocalStorage = (newHistory) => {
-    try {
-      localStorage.setItem('research-history', JSON.stringify(newHistory));
-      logger.info('Saved history to localStorage', { count: newHistory.length });
-    } catch (error) {
-      logger.error('Failed to save history to localStorage', error);
-    }
-  };
+  }, [authLoading, user, saveToLocalStorage]);
 
   // 添加研究记录
-  const addResearch = (research) => {
+  const addResearch = useCallback((research) => {
     const newResearch = {
       id: Date.now().toString(),
       query: research.query,
@@ -114,93 +123,99 @@ export const HistoryProvider = ({ children }) => {
       ...research,
     };
 
-    const newHistory = [newResearch, ...history];
-    setHistory(newHistory);
+    setHistory((previousHistory) => {
+      const newHistory = [newResearch, ...previousHistory];
+      saveToLocalStorage(newHistory);
+      return newHistory;
+    });
     setCurrentResearch(newResearch);
-    saveToLocalStorage(newHistory);
 
     logger.info('Added research to history', { id: newResearch.id, query: newResearch.query });
     return newResearch;
-  };
+  }, [saveToLocalStorage]);
 
   // 更新研究记录
-  const updateResearch = (id, updates) => {
-    const newHistory = history.map((item) =>
-      item.id === id ? { ...item, ...updates } : item
+  const updateResearch = useCallback((id, updates) => {
+    setHistory((previousHistory) => {
+      const newHistory = previousHistory.map((item) =>
+        item.id === id ? { ...item, ...updates } : item
+      );
+      saveToLocalStorage(newHistory);
+      return newHistory;
+    });
+    setCurrentResearch((previousResearch) =>
+      previousResearch && previousResearch.id === id
+        ? { ...previousResearch, ...updates }
+        : previousResearch
     );
-    setHistory(newHistory);
-    saveToLocalStorage(newHistory);
-
-    // 如果更新的是当前研究，也更新 currentResearch
-    if (currentResearch && currentResearch.id === id) {
-      setCurrentResearch({ ...currentResearch, ...updates });
-    }
-
     logger.info('Updated research in history', { id, updates });
-  };
+  }, [saveToLocalStorage]);
 
-  const replaceResearchId = (oldId, newId) => {
-    const newHistory = history.map((item) =>
-      item.id === oldId ? { ...item, id: newId, isTemporaryId: false } : item
+  const replaceResearchId = useCallback((oldId, newId) => {
+    setHistory((previousHistory) => {
+      const newHistory = previousHistory.map((item) =>
+        item.id === oldId ? { ...item, id: newId, isTemporaryId: false } : item
+      );
+      saveToLocalStorage(newHistory);
+      return newHistory;
+    });
+    setCurrentResearch((previousResearch) =>
+      previousResearch && previousResearch.id === oldId
+        ? { ...previousResearch, id: newId, isTemporaryId: false }
+        : previousResearch
     );
-    setHistory(newHistory);
-    saveToLocalStorage(newHistory);
-
-    if (currentResearch && currentResearch.id === oldId) {
-      setCurrentResearch({ ...currentResearch, id: newId, isTemporaryId: false });
-    }
-
     logger.info('Replaced research id', { oldId, newId });
-  };
+  }, [saveToLocalStorage]);
 
   // 删除研究记录
-  const deleteResearch = (id) => {
-    const newHistory = history.filter((item) => item.id !== id);
-    setHistory(newHistory);
-    saveToLocalStorage(newHistory);
-
-    // 如果删除的是当前研究，清空 currentResearch
-    if (currentResearch && currentResearch.id === id) {
-      setCurrentResearch(null);
-    }
-
+  const deleteResearch = useCallback((id) => {
+    setHistory((previousHistory) => {
+      const newHistory = previousHistory.filter((item) => item.id !== id);
+      saveToLocalStorage(newHistory);
+      return newHistory;
+    });
+    setCurrentResearch((previousResearch) =>
+      previousResearch && previousResearch.id === id ? null : previousResearch
+    );
     logger.info('Deleted research from history', { id });
-  };
+  }, [saveToLocalStorage]);
 
   // 固定/取消固定研究
-  const togglePin = (id) => {
-    const newHistory = history.map((item) =>
-      item.id === id ? { ...item, pinned: !item.pinned } : item
-    );
-    // 将固定的项目移到前面
-    newHistory.sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      return new Date(b.timestamp) - new Date(a.timestamp);
+  const togglePin = useCallback((id) => {
+    setHistory((previousHistory) => {
+      const newHistory = previousHistory.map((item) =>
+        item.id === id ? { ...item, pinned: !item.pinned } : item
+      );
+      // 将固定的项目移到前面
+      newHistory.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      saveToLocalStorage(newHistory);
+      return newHistory;
     });
-    setHistory(newHistory);
-    saveToLocalStorage(newHistory);
 
     logger.info('Toggled pin for research', { id });
-  };
+  }, [saveToLocalStorage]);
 
   // 清空历史记录
-  const clearHistory = () => {
+  const clearHistory = useCallback(() => {
     setHistory([]);
     setCurrentResearch(null);
     localStorage.removeItem('research-history');
     logger.info('Cleared all history');
-  };
+  }, []);
 
   // 加载特定研究
-  const loadResearch = (id) => {
+  const loadResearch = useCallback((id) => {
     const research = history.find((item) => item.id === id);
     if (research) {
       setCurrentResearch(research);
       logger.info('Loaded research', { id, query: research.query });
     }
     return research;
-  };
+  }, [history]);
 
   // 搜索历史记录
   const searchHistory = (searchTerm) => {
