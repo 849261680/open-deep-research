@@ -8,9 +8,9 @@ from ..services.deepseek_service import deepseek_service
 class DeepSeekLLM(BaseLLM):
     """Custom LLM wrapper for DeepSeek API，优化性能."""
 
-    model_name: str = "deepseek-chat"
-    temperature: float = 0.7
-    max_tokens: int = 2000  # 减少最大 tokens 以提高速度
+    model_name: str = deepseek_service.config.model
+    temperature: float = deepseek_service.config.temperature
+    max_tokens: int = deepseek_service.config.max_output_tokens
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -28,7 +28,12 @@ class DeepSeekLLM(BaseLLM):
     ) -> LLMResult:
         """Generate text from DeepSeek API."""
         prompt = prompts[0]
-        response = deepseek_service.generate_response_sync(prompt, self.max_tokens)
+        response = deepseek_service.generate_response_sync(
+            prompt,
+            self.max_tokens,
+            model=self.model_name,
+            temperature=self.temperature,
+        )
         generation = Generation(text=response)
         return LLMResult(generations=[[generation]])
 
@@ -41,7 +46,12 @@ class DeepSeekLLM(BaseLLM):
     ) -> LLMResult:
         """Generate text from DeepSeek API asynchronously."""
         prompt = prompts[0]
-        response = await deepseek_service.generate_response(prompt, self.max_tokens)
+        response = await deepseek_service.generate_response(
+            prompt,
+            self.max_tokens,
+            model=self.model_name,
+            temperature=self.temperature,
+        )
         generation = Generation(text=response)
         return LLMResult(generations=[[generation]])
 

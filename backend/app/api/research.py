@@ -31,6 +31,10 @@ class ResumeResearchRequest(BaseModel):
     stream: bool | None = True
 
 
+class StopResearchRequest(BaseModel):
+    task_id: str
+
+
 @router.options("/research")
 async def research_options():
     """处理CORS预检请求"""
@@ -138,6 +142,29 @@ async def resume_research(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"恢复研究失败: {str(e)}") from e
+
+
+@router.post("/research/stop")
+async def stop_research(
+    request: StopResearchRequest,
+    current_user: User | None = Depends(get_optional_current_user),
+):
+    """停止正在运行的研究任务。"""
+    if not request.task_id.strip():
+        raise HTTPException(status_code=400, detail="任务ID不能为空")
+
+    task = research_orchestrator.stop_task(
+        request.task_id,
+        user_id=current_user.id if current_user else None,
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="研究任务不存在")
+
+    return {
+        "status": "stopped",
+        "task_id": request.task_id,
+        "task": task,
+    }
 
 
 @router.get("/research/status")

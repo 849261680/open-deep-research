@@ -58,9 +58,22 @@ api.interceptors.response.use(
 
 // 研究API
 export const researchAPI = {
-  streamRequest: async (url, payload, onUpdate) => {
+  streamRequest: async (url, payload, onUpdate, options = {}) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 600000);
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 600000);
+
+    const handleExternalAbort = () => controller.abort();
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', handleExternalAbort, { once: true });
+      }
+    }
 
     const token = localStorage.getItem('access_token');
     const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -126,7 +139,7 @@ export const researchAPI = {
       clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
-        throw new Error('请求超时，请重试');
+        throw new Error(timedOut ? '请求超时，请重试' : '研究已停止');
       } else if (error.message.includes('Failed to fetch') ||
                  error.message.includes('NetworkError') ||
                  error.message.includes('ERR_CONNECTION_CLOSED')) {
@@ -134,22 +147,34 @@ export const researchAPI = {
       } else {
         throw error;
       }
+    } finally {
+      clearTimeout(timeoutId);
+      if (options.signal) {
+        options.signal.removeEventListener('abort', handleExternalAbort);
+      }
     }
   },
 
   // 开始研究（流式）
-  startResearchStream: async (query, onUpdate) => {
+  startResearchStream: async (query, onUpdate, options = {}) => {
     return researchAPI.streamRequest('/api/research', {
       query,
       stream: true
-    }, onUpdate);
+    }, onUpdate, options);
   },
 
-  resumeResearchStream: async (taskId, onUpdate) => {
+  resumeResearchStream: async (taskId, onUpdate, options = {}) => {
     return researchAPI.streamRequest('/api/research/resume', {
       task_id: taskId,
       stream: true
-    }, onUpdate);
+    }, onUpdate, options);
+  },
+
+  stopResearch: async (taskId) => {
+    const response = await api.post('/api/research/stop', {
+      task_id: taskId,
+    });
+    return response.data;
   },
 
   // 开始研究（非流式）

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 
@@ -14,6 +16,7 @@ class ResearchOrchestrator:
 
     def __init__(self) -> None:
         self.repository = ResearchRepository()
+        self._active_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def run(
         self, query: str, user_id: int | None = None
@@ -41,17 +44,62 @@ class ResearchOrchestrator:
         self, task: ResearchTask
     ) -> AsyncGenerator[dict[str, object], None]:
         research_agent = ResearchAgent(query=task.query)
+        update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+
+        async def produce_updates() -> None:
+            try:
+                async for update in research_agent.run(task):
+                    await update_queue.put({"type": "update", "data": update})
+            except asyncio.CancelledError:
+                await update_queue.put({"type": "cancelled", "data": None})
+                raise
+            except Exception as exc:  # noqa: BLE001
+                await update_queue.put({"type": "exception", "data": exc})
+            finally:
+                await update_queue.put({"type": "done", "data": None})
+
+        runner = asyncio.create_task(produce_updates())
+        self._active_tasks[task.id] = runner
         try:
-            async for update in research_agent.run(task):
-                task.touch()
-                self.repository.save_task(task)
-                yield update
+            while True:
+                queued = await update_queue.get()
+                event_type = queued["type"]
+
+                if event_type == "update":
+                    update = queued["data"]
+                    if isinstance(update, dict):
+                        task.touch()
+                        self.repository.save_task(task)
+                        yield update
+                    continue
+
+                if event_type == "exception":
+                    exc = queued["data"]
+                    raise exc if isinstance(exc, Exception) else RuntimeError(str(exc))
+
+                if event_type == "cancelled":
+                    self._mark_stopped(task)
+                    with suppress(asyncio.CancelledError):
+                        await runner
+                    return
+
+                if event_type == "done":
+                    return
+        except asyncio.CancelledError:
+            runner.cancel()
+            with suppress(asyncio.CancelledError):
+                await runner
+            self._mark_stopped(task)
+            raise
         except Exception as exc:  # noqa: BLE001
             task.status = ResearchTaskStatus.FAILED
             task.error = str(exc)
             task.touch()
             self.repository.save_task(task)
             yield self._event("error", f"报告生成失败: {exc}", None)
+        finally:
+            if self._active_tasks.get(task.id) is runner:
+                self._active_tasks.pop(task.id, None)
 
     def get_history(self, user_id: int | None = None) -> list[dict[str, object]]:
         return self.repository.load_tasks(user_id=user_id)
@@ -79,10 +127,33 @@ class ResearchOrchestrator:
             yield update
 
     def clear(self) -> None:
+        for task in self._active_tasks.values():
+            task.cancel()
+        self._active_tasks.clear()
         self.repository.clear()
+
+    def stop_task(
+        self, task_id: str, user_id: int | None = None
+    ) -> dict[str, object] | None:
+        task = self.repository.load_task(task_id, user_id=user_id)
+        if task is None:
+            return None
+
+        active_task = self._active_tasks.get(task_id)
+        if active_task is not None and not active_task.done():
+            active_task.cancel()
+
+        self._mark_stopped(task)
+        return task.model_dump()
 
     def _event(self, event_type: str, message: str, data: object) -> dict[str, object]:
         return {"type": event_type, "message": message, "data": data}
+
+    def _mark_stopped(self, task: ResearchTask) -> None:
+        task.status = ResearchTaskStatus.FAILED
+        task.error = "研究已停止"
+        task.touch()
+        self.repository.save_task(task)
 
 
 research_orchestrator = ResearchOrchestrator()

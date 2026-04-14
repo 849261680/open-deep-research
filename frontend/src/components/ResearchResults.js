@@ -47,22 +47,6 @@ const ResearchResults = ({ data }) => {
     URL.revokeObjectURL(url);
   };
 
-  const handleShare = () => {
-    // 复制报告到剪贴板
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(data.report).then(() => {
-        alert('报告已复制到剪贴板');
-      });
-    } else {
-      alert('您的浏览器不支持剪贴板功能');
-    }
-  };
-
-  const handleRerun = () => {
-    // 重新运行研究（可以通过父组件传递的回调实现）
-    alert('重新运行功能即将上线');
-  };
-
   const tabs = [
     { id: 'report', label: '研究报告', icon: FileText },
     { id: 'process', label: '研究过程', icon: CheckCircle }
@@ -76,8 +60,6 @@ const ResearchResults = ({ data }) => {
         timestamp={data.timestamp}
         status="completed"
         onDownload={handleDownload}
-        onShare={handleShare}
-        onRerun={handleRerun}
       />
 
       {/* Tab 导航 */}

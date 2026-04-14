@@ -67,6 +67,7 @@ const StreamingResults = ({ updates }) => {
       case 'report_complete':
         return CheckCircle;
       case 'error':
+      case 'stopped':
         return AlertCircle;
       default:
         return Zap;
@@ -97,6 +98,7 @@ const StreamingResults = ({ updates }) => {
           text: 'text-text-primary'
         };
       case 'error':
+      case 'stopped':
         return {
           icon: 'text-error',
           bg: 'bg-error-bg',

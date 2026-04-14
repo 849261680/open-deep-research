@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from dataclasses import field
 
+from ..services.deepseek_service import DeepSeekConfig
+
 
 def estimate_tokens(text: str) -> int:
     """Cheap token estimate for providers that do not return usage metadata."""
@@ -16,7 +18,7 @@ def estimate_tokens(text: str) -> int:
 class CostTracker:
     """Tracks estimated LLM token usage and cost for one research task."""
 
-    model: str = "deepseek-chat"
+    model: str = field(default_factory=lambda: DeepSeekConfig.from_env().model)
     input_cost_per_1m_tokens: float = field(default_factory=lambda: _env_float(
         "DEEPSEEK_INPUT_COST_PER_1M_TOKENS",
         0.28,

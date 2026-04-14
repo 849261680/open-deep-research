@@ -4,9 +4,9 @@ import json
 import logging
 
 from ..llms.deepseek_llm import DeepSeekLLM
+from ..models.research_task import Citation
 
 logger = logging.getLogger(__name__)
-from ..models.research_task import Citation
 
 
 class VerifierService:

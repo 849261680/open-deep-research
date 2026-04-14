@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Share2, RefreshCw, Clock, CheckCircle } from 'lucide-react';
+import { Download, Clock, CheckCircle } from 'lucide-react';
 import Button from './Button';
 
 /**
@@ -7,7 +7,7 @@ import Button from './Button';
  *
  * 显示查询标题、时间戳、状态标签、操作按钮
  */
-const ResultHeader = ({ query, timestamp, status, onDownload, onShare, onRerun }) => {
+const ResultHeader = ({ query, timestamp, status, onDownload }) => {
   // 格式化时间
   const formatTimestamp = (ts) => {
     const date = new Date(ts);
@@ -52,23 +52,9 @@ const ResultHeader = ({ query, timestamp, status, onDownload, onShare, onRerun }
           <Button
             variant="secondary"
             size="small"
-            icon={<RefreshCw className="w-4 h-4" />}
-            onClick={onRerun}
-            title="重新运行"
-          />
-          <Button
-            variant="secondary"
-            size="small"
             icon={<Download className="w-4 h-4" />}
             onClick={onDownload}
             title="下载报告"
-          />
-          <Button
-            variant="secondary"
-            size="small"
-            icon={<Share2 className="w-4 h-4" />}
-            onClick={onShare}
-            title="分享"
           />
         </div>
       </div>

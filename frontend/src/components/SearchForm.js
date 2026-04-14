@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, XCircle } from 'lucide-react';
 import Button from './Button';
 
 /**
@@ -7,7 +7,13 @@ import Button from './Button';
  *
  * 大尺寸输入框 + 按钮组合
  */
-const SearchForm = ({ onSubmit, isLoading, disabled = false, initialValue = '' }) => {
+const SearchForm = ({
+  onSubmit,
+  onStop,
+  isLoading,
+  disabled = false,
+  initialValue = '',
+}) => {
   const [query, setQuery] = useState(initialValue);
 
   const handleSubmit = (e) => {
@@ -54,6 +60,18 @@ const SearchForm = ({ onSubmit, isLoading, disabled = false, initialValue = '' }
         >
           {isLoading ? '研究中' : '搜索'}
         </Button>
+
+        {isLoading && onStop && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="large"
+            onClick={onStop}
+            icon={<XCircle className="w-4 h-4" />}
+          >
+            停止
+          </Button>
+        )}
       </div>
 
       {/* 提示文字 */}

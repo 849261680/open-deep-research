@@ -329,6 +329,29 @@ def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -
     assert orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)
 
 
+def test_orchestrator_stop_task_marks_task_failed(tmp_path) -> None:
+    orchestrator = ResearchOrchestrator()
+    orchestrator.repository.db_path = str(tmp_path / "research.db")
+    orchestrator.repository._ensure_db()
+    task = ResearchTask(
+        id="task-stop",
+        user_id=1,
+        query="stop query",
+        status=ResearchTaskStatus.RESEARCHING,
+    )
+    orchestrator.repository.save_task(task)
+
+    stopped = orchestrator.stop_task("task-stop", user_id=1)
+    saved = orchestrator.repository.load_task("task-stop", user_id=1)
+
+    assert stopped is not None
+    assert stopped["status"] == "failed"
+    assert stopped["error"] == "研究已停止"
+    assert saved is not None
+    assert saved.status == ResearchTaskStatus.FAILED
+    assert saved.error == "研究已停止"
+
+
 def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
     agent = ResearchAgent(query="DeepSeek enterprise", max_concurrency=1)
     task = ResearchTask(id="task-gptr", query="DeepSeek enterprise")

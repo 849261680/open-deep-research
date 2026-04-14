@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 
 import requests
 from requests.exceptions import Timeout
@@ -14,8 +15,48 @@ load_project_env()
 logger = logging.getLogger(__name__)
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer env %s=%r, using default %d", name, raw, default)
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid float env %s=%r, using default %.2f", name, raw, default)
+        return default
+
+
+@dataclass(frozen=True)
+class DeepSeekConfig:
+    model: str
+    temperature: float
+    max_output_tokens: int
+    max_prompt_chars: int
+
+    @classmethod
+    def from_env(cls) -> "DeepSeekConfig":
+        return cls(
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            temperature=_env_float("DEEPSEEK_TEMPERATURE", 0.7),
+            max_output_tokens=_env_int("DEEPSEEK_MAX_OUTPUT_TOKENS", 4_000),
+            max_prompt_chars=_env_int("DEEPSEEK_MAX_PROMPT_CHARS", 24_000),
+        )
+
+
 class DeepSeekService:
-    def __init__(self) -> None:
+    def __init__(self, config: DeepSeekConfig | None = None) -> None:
+        self.config = config or DeepSeekConfig.from_env()
         self.api_key = os.getenv("DEEPSEEK_API_KEY")
         self.base_url = "https://api.deepseek.com/v1"
         self.headers = {
@@ -23,23 +64,42 @@ class DeepSeekService:
             "Content-Type": "application/json",
         }
 
-    def _build_payload(self, prompt: str, max_tokens: int, stream: bool) -> dict[str, object]:
+    def _build_payload(
+        self,
+        prompt: str,
+        max_tokens: int | None,
+        stream: bool,
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> dict[str, object]:
+        requested_max_tokens = max_tokens or self.config.max_output_tokens
         return {
-            "model": "deepseek-chat",
+            "model": model or self.config.model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": min(max_tokens, 2000),
-            "temperature": 0.7,
+            "max_tokens": min(requested_max_tokens, self.config.max_output_tokens),
+            "temperature": (
+                self.config.temperature if temperature is None else temperature
+            ),
             "stream": stream,
         }
 
     def _truncate_prompt(self, prompt: str) -> str:
-        max_prompt_length = 2000
-        if len(prompt) > max_prompt_length:
-            prompt = prompt[:max_prompt_length] + "...\n\n请基于以上内容生成简洁摘要。"
-            logger.warning("提示词过长，已截断至 %d 字符", max_prompt_length)
+        if self.config.max_prompt_chars <= 0:
+            return prompt
+        if len(prompt) > self.config.max_prompt_chars:
+            prompt = prompt[:self.config.max_prompt_chars] + "...\n\n请基于以上内容生成简洁摘要。"
+            logger.warning("提示词过长，已截断至 %d 字符", self.config.max_prompt_chars)
         return prompt
 
-    def generate_response_sync(self, prompt: str, max_tokens: int = 2000) -> str:
+    def generate_response_sync(
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> str:
         """同步调用 DeepSeek，供同步 LangChain 路径和线程池包装使用。"""
         logger.debug("开始生成响应，提示词长度: %d", len(prompt))
 
@@ -47,7 +107,13 @@ class DeepSeekService:
             raise ValueError("DeepSeek API key not found")
 
         prompt = self._truncate_prompt(prompt)
-        payload = self._build_payload(prompt, max_tokens, stream=False)
+        payload = self._build_payload(
+            prompt,
+            max_tokens,
+            stream=False,
+            model=model,
+            temperature=temperature,
+        )
 
         max_retries = 2
         response: requests.Response | None = None
@@ -93,19 +159,43 @@ class DeepSeekService:
 
         raise Exception(f"DeepSeek API error: {response.status_code} - {response.text}")
 
-    async def generate_response(self, prompt: str, max_tokens: int = 2000) -> str:
+    async def generate_response(
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> str:
         """异步包装，避免阻塞事件循环。"""
-        return await asyncio.to_thread(self.generate_response_sync, prompt, max_tokens)
+        return await asyncio.to_thread(
+            self.generate_response_sync,
+            prompt,
+            max_tokens,
+            model=model,
+            temperature=temperature,
+        )
 
     async def stream_response(
-        self, prompt: str, max_tokens: int = 4000
+        self,
+        prompt: str,
+        max_tokens: int | None = None,
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
     ) -> AsyncGenerator[str, None]:
         """流式生成回复"""
         if not self.api_key:
             raise ValueError("DeepSeek API key not found")
 
         prompt = self._truncate_prompt(prompt)
-        payload = self._build_payload(prompt, max_tokens, stream=True)
+        payload = self._build_payload(
+            prompt,
+            max_tokens,
+            stream=True,
+            model=model,
+            temperature=temperature,
+        )
 
         def _stream_lines() -> list[str]:
             response = requests.post(

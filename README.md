@@ -175,6 +175,10 @@ cp frontend/.env.example frontend/.env
 3. 配置环境变量：
    ```
    DEEPSEEK_API_KEY=your_key
+   DEEPSEEK_MODEL=deepseek-chat
+   DEEPSEEK_TEMPERATURE=0.7
+   DEEPSEEK_MAX_OUTPUT_TOKENS=4000
+   DEEPSEEK_MAX_PROMPT_CHARS=24000
    TAVILY_API_KEY=your_key
    FRONTEND_URL=https://your-vercel-domain.vercel.app
    ```

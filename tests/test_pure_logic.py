@@ -391,15 +391,23 @@ class TestTruncatePrompt:
         text = "hello"
         assert self.svc._truncate_prompt(text) == text
 
-    def test_long_prompt_is_truncated_to_2000(self):
-        text = "x" * 3000
-        result = self.svc._truncate_prompt(text)
-        assert len(result) <= 2100  # 2000 + suffix
+    def test_research_context_sized_prompt_is_unchanged(self):
+        text = "x" * 12_000
+        assert self.svc._truncate_prompt(text) == text
+
+    def test_configured_prompt_limit_truncates(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MAX_PROMPT_CHARS", "3000")
+        svc = DeepSeekService()
+        text = "x" * 5000
+        result = svc._truncate_prompt(text)
+        assert len(result) <= 3100  # 3000 + suffix
         assert "请基于以上内容生成简洁摘要" in result
 
-    def test_exact_2000_chars_is_not_truncated(self):
-        text = "x" * 2000
-        assert self.svc._truncate_prompt(text) == text
+    def test_truncation_can_be_disabled(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MAX_PROMPT_CHARS", "0")
+        svc = DeepSeekService()
+        text = "x" * 100_000
+        assert svc._truncate_prompt(text) == text
 
 
 class TestBuildPayload:
@@ -411,9 +419,40 @@ class TestBuildPayload:
         assert payload["stream"] is False
         assert payload["messages"][0]["content"] == "hello"
 
-    def test_max_tokens_is_capped_at_2000(self):
+    def test_max_tokens_is_capped_at_default_limit(self):
         payload = self.svc._build_payload("x", max_tokens=9999, stream=False)
-        assert payload["max_tokens"] == 2000
+        assert payload["max_tokens"] == 4000
+
+    def test_max_tokens_cap_can_be_configured(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "1200")
+        svc = DeepSeekService()
+        payload = svc._build_payload("x", max_tokens=9999, stream=False)
+        assert payload["max_tokens"] == 1200
+
+    def test_max_tokens_defaults_to_configured_limit(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "1200")
+        svc = DeepSeekService()
+        payload = svc._build_payload("x", max_tokens=None, stream=False)
+        assert payload["max_tokens"] == 1200
+
+    def test_model_and_temperature_default_from_env(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-reasoner")
+        monkeypatch.setenv("DEEPSEEK_TEMPERATURE", "0.2")
+        svc = DeepSeekService()
+        payload = svc._build_payload("hello", max_tokens=500, stream=False)
+        assert payload["model"] == "deepseek-reasoner"
+        assert payload["temperature"] == 0.2
+
+    def test_model_and_temperature_can_be_overridden_per_call(self):
+        payload = self.svc._build_payload(
+            "hello",
+            max_tokens=500,
+            stream=False,
+            model="custom-model",
+            temperature=0.1,
+        )
+        assert payload["model"] == "custom-model"
+        assert payload["temperature"] == 0.1
 
     def test_stream_flag_is_forwarded(self):
         payload = self.svc._build_payload("x", max_tokens=100, stream=True)
@@ -446,3 +485,8 @@ class TestCostTracker:
         assert summary["total_output_tokens"] == 50
         assert summary["estimated_cost_usd"] == 0.0002
         assert summary["calls"][0]["step"] == "query_planning"
+
+    def test_model_defaults_to_deepseek_config(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-reasoner")
+        tracker = CostTracker()
+        assert tracker.summary()["model"] == "deepseek-reasoner"
