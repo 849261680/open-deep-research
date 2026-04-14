@@ -41,7 +41,7 @@ class EvidenceStore:
                 id=evidence_id,
                 section_id=section_id,
                 query=query,
-                source_type=source_type,
+                source_type=str(item.get("source_type", source_type)),
                 title=str(item.get("title", "")),
                 link=str(item.get("link", "")),
                 snippet=str(item.get("snippet", "")),

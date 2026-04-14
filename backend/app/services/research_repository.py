@@ -168,8 +168,33 @@ class ResearchRepository:
             conn.commit()
             return cursor.rowcount
 
-    def clear(self) -> None:
+    def clear(self, user_id: int | None = None) -> int:
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM evidence_items")
-            conn.execute("DELETE FROM research_tasks")
+            if user_id is None:
+                deleted = conn.execute("SELECT COUNT(*) FROM research_tasks").fetchone()[0]
+                conn.execute("DELETE FROM evidence_items")
+                conn.execute("DELETE FROM research_tasks")
+                conn.commit()
+                return int(deleted)
+
+            task_ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT id FROM research_tasks WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            ]
+            if not task_ids:
+                return 0
+
+            placeholders = ",".join("?" for _ in task_ids)
+            conn.execute(
+                f"DELETE FROM evidence_items WHERE task_id IN ({placeholders})",
+                task_ids,
+            )
+            conn.execute(
+                f"DELETE FROM research_tasks WHERE id IN ({placeholders})",
+                task_ids,
+            )
             conn.commit()
+            return len(task_ids)

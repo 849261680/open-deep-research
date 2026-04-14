@@ -4,6 +4,8 @@ import asyncio
 from collections.abc import Awaitable
 from collections.abc import Callable
 
+from ..services.compression_service import compression_service
+from ..services.verifier_service import verifier_service
 from .context_manager import ResearchContextManager
 from .models import SubQueryContext
 from .query_planner import QueryPlanner
@@ -89,14 +91,18 @@ class ResearchConductor:
                     "status": "completed",
                     "analysis": context.context,
                     "cost_summary": self.researcher.cost_tracker.summary(),
-                    "citations": [
+                    "citations": [citation.model_dump() for citation in context.citations],
+                    "evidence_ids": context.evidence_ids,
+                    "compressed_evidence": context.compressed_evidence,
+                    "verification": context.verification,
+                    "search_sources": [
                         {
                             "title": source.title,
                             "link": source.link,
                             "source": source.source,
                             "query": source.query,
                         }
-                        for source in context.sources[:5]
+                        for source in context.sources
                     ],
                 },
             )
@@ -115,13 +121,55 @@ class ResearchConductor:
             search_results,
             self.researcher.visited_urls,
         )
+        evidence_ids = await self._store_evidence(step, sub_query, scraped_sources)
+        evidence = self.researcher.evidence_store.get_many(evidence_ids)
+        citations = self.researcher.evidence_store.get_citations(evidence_ids)
+        compressed_evidence = compression_service.compress_evidence(sub_query, evidence)
         context = await self.context_manager.get_context(sub_query, scraped_sources)
+        verification = await verifier_service.verify_section(
+            analysis=context,
+            citations=citations,
+            compressed_evidence=compressed_evidence,
+        )
         return SubQueryContext(
             step=step,
             query=sub_query,
             sources=scraped_sources,
+            citations=citations,
+            evidence_ids=evidence_ids,
+            compressed_evidence=compressed_evidence,
+            verification=verification,
             context=context,
         )
+
+    async def _store_evidence(
+        self,
+        step: int,
+        sub_query: str,
+        sources: list,
+    ) -> list[str]:
+        if not sources:
+            return []
+
+        evidence_ids = await self.researcher.evidence_store.add_many(
+            section_id=f"subquery-{step}",
+            query=sub_query,
+            source_type="web",
+            task_id=self.researcher.task_id,
+            items=[
+                {
+                    "title": source.title,
+                    "link": source.link,
+                    "snippet": source.snippet,
+                    "source_type": source.source,
+                }
+                for source in sources
+            ],
+        )
+        if self.researcher.repository is not None and self.researcher.task_id is not None:
+            for item in self.researcher.evidence_store.get_many(evidence_ids):
+                self.researcher.repository.save_evidence(self.researcher.task_id, item)
+        return evidence_ids
 
     async def _emit(
         self,

@@ -68,12 +68,12 @@ async def start_research(
                     request.query, user_id=user_id
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
-            except Exception as e:
+            except Exception as exc:
                 logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
                 error_update = {
                     "type": "error",
                     "message": "研究过程中发生错误，请稍后重试",
-                    "data": None,
+                    "data": {"detail": str(exc)},
                 }
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
 
@@ -122,12 +122,12 @@ async def resume_research(
                     request.task_id, user_id=user_id
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
-            except Exception as e:
+            except Exception as exc:
                 logger.exception("恢复研究任务失败 task_id=%r user_id=%s", request.task_id, user_id)
                 error_update = {
                     "type": "error",
                     "message": "恢复研究过程中发生错误，请稍后重试",
-                    "data": None,
+                    "data": {"detail": str(exc)},
                 }
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
 
@@ -226,10 +226,10 @@ async def get_research_task(
 
 
 @router.delete("/research/history")
-async def clear_research_history(_current_user: User = Depends(get_current_user)):
+async def clear_research_history(current_user: User = Depends(get_current_user)):
     """清空研究历史"""
-    research_orchestrator.clear()
-    return {"message": "研究历史已清空"}
+    cleared = research_orchestrator.clear(user_id=current_user.id)
+    return {"message": "研究历史已清空", "cleared": cleared}
 
 
 @router.get("/health")

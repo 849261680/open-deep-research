@@ -43,7 +43,7 @@ class ResearchOrchestrator:
     async def run_task(
         self, task: ResearchTask
     ) -> AsyncGenerator[dict[str, object], None]:
-        research_agent = ResearchAgent(query=task.query)
+        research_agent = ResearchAgent(query=task.query, repository=self.repository)
         update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         async def produce_updates() -> None:
@@ -126,11 +126,25 @@ class ResearchOrchestrator:
         async for update in self.run_task(task):
             yield update
 
-    def clear(self) -> None:
-        for task in self._active_tasks.values():
-            task.cancel()
-        self._active_tasks.clear()
-        self.repository.clear()
+    def clear(self, user_id: int | None = None) -> int:
+        if user_id is None:
+            for task in self._active_tasks.values():
+                task.cancel()
+            self._active_tasks.clear()
+            return self.repository.clear()
+
+        owned_task_ids = {
+            item["id"]
+            for item in self.repository.load_tasks(user_id=user_id)
+            if isinstance(item, dict) and item.get("id")
+        }
+        for task_id in owned_task_ids:
+            active_task = self._active_tasks.get(task_id)
+            if active_task is not None and not active_task.done():
+                active_task.cancel()
+            self._active_tasks.pop(task_id, None)
+
+        return self.repository.clear(user_id=user_id)
 
     def stop_task(
         self, task_id: str, user_id: int | None = None

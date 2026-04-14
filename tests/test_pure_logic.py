@@ -2,6 +2,7 @@
 纯逻辑单元测试 — 不依赖任何外部 API / 网络 / 数据库。
 覆盖范围：
   - ResearchOrchestrator._event
+  - ResearchConductor section evidence pipeline
   - VerifierService._deterministic_verify / _parse_json
   - ContentExtractionService._extract_content_sync (HTML 清洗，本地字符串)
   - DeepSeekService._truncate_prompt / _build_payload
@@ -10,8 +11,8 @@
 """
 from __future__ import annotations
 
-import json
 import os
+import sqlite3
 
 # ── 避免导入时触发真实 DB / env 初始化 ──────────────────────────────────────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_logic.db")
@@ -21,10 +22,15 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 # ── 被测模块 ─────────────────────────────────────────────────────────────────
 from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.models.research_task import Citation
+from backend.app.models.research_task import ResearchSection
+from backend.app.research.conductor import ResearchConductor
+from backend.app.research.writer import ResearchWriter
 from backend.app.research.source_curator import SourceCurator, _score_source
 from backend.app.research.models import ResearchSource
 from backend.app.services.content_extraction_service import ContentExtractionService
 from backend.app.services.deepseek_service import DeepSeekService
+from backend.app.services.evidence_store import EvidenceStore
+from backend.app.services.research_repository import ResearchRepository
 from backend.app.services.verifier_service import VerifierService
 from backend.app.research.cost_tracker import CostTracker
 from backend.app.research.cost_tracker import estimate_tokens
@@ -44,6 +50,161 @@ class TestEventHelper:
     def test_event_data_can_be_none(self):
         event = self.orch._event("done", "完成", None)
         assert event["data"] is None
+
+
+class TestResearchConductor:
+    def test_conductor_persists_evidence_and_verification(self, monkeypatch, tmp_path):
+        repository = ResearchRepository(str(tmp_path / "research.db"))
+
+        class ResearcherStub:
+            def __init__(self, repository: ResearchRepository) -> None:
+                self.query = "DeepSeek 企业应用"
+                self.max_sub_queries = 1
+                self.max_concurrency = 1
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.sub_queries = []
+                self.context = []
+                self.research_sources = []
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-1"
+                self.repository = repository
+
+        conductor = ResearchConductor(ResearcherStub(repository))
+        source = ResearchSource(
+            title="DeepSeek Case Study",
+            link="https://example.com/case-study",
+            source="web",
+            query="DeepSeek 企业应用案例",
+            snippet="DeepSeek 被用于企业知识库和客服自动化。",
+            extracted_content="DeepSeek 被用于企业知识库和客服自动化，提升响应速度和准确率。",
+        )
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            return [source]
+
+        async def fake_plan(**kwargs):  # noqa: ANN003
+            return ["DeepSeek 企业应用案例"]
+
+        async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
+            return sources
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return "企业落地集中在知识库、客服和内部助手场景。"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {
+                "passed": True,
+                "score": 0.9,
+                "issues": [],
+                "summary": "证据足以支持分析",
+            }
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.query_planner, "plan", fake_plan)
+        monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        contexts = asyncio.run(conductor.conduct_research())
+
+        assert len(contexts) == 2
+        sub_query_context = contexts[0]
+        assert sub_query_context.evidence_ids
+        assert sub_query_context.citations[0].title == "DeepSeek Case Study"
+        assert "DeepSeek Case Study" in sub_query_context.compressed_evidence
+        assert sub_query_context.verification["passed"] is True
+
+        with sqlite3.connect(repository.db_path) as conn:
+            evidence_count = conn.execute(
+                "SELECT COUNT(*) FROM evidence_items WHERE task_id = ?",
+                ("task-1",),
+            ).fetchone()[0]
+        assert evidence_count == 2
+
+
+class TestResearchWriter:
+    def test_format_context_prefers_sections_with_verification_and_evidence(self):
+        writer = ResearchWriter()
+        sections = [
+            ResearchSection(
+                id="subquery-1",
+                step=1,
+                title="DeepSeek 企业应用案例",
+                description="desc",
+                status="completed",
+                analysis="企业应用集中在知识库和客服。",
+                compressed_evidence="研究主题: DeepSeek 企业应用案例\n- [web] DeepSeek Case Study",
+                verification={
+                    "passed": True,
+                    "score": 0.92,
+                    "summary": "证据充分",
+                },
+                citations=[
+                    Citation(
+                        title="DeepSeek Case Study",
+                        link="https://example.com/case",
+                        source="web",
+                    )
+                ],
+            )
+        ]
+        reference_entries = writer._collect_reference_entries([], sections, [])
+        formatted = writer._format_context(
+            sections,
+            [],
+            writer._build_source_index(reference_entries),
+        )
+
+        assert "校验: 通过 | score=0.92 | 证据充分" in formatted
+        assert "证据压缩" in formatted
+        assert "[1] DeepSeek Case Study: https://example.com/case" in formatted
+        assert "企业应用集中在知识库和客服。" in formatted
+
+    def test_collect_reference_entries_merges_sources_and_section_citations(self):
+        writer = ResearchWriter()
+        sections = [
+            ResearchSection(
+                id="subquery-1",
+                step=1,
+                title="DeepSeek 企业应用案例",
+                description="desc",
+                citations=[
+                    Citation(
+                        title="Section Source",
+                        link="https://example.com/section",
+                        source="web",
+                    )
+                ],
+            )
+        ]
+        sources = [
+            ResearchSource(
+                title="Primary Source",
+                link="https://example.com/primary",
+            )
+        ]
+
+        entries = writer._collect_reference_entries(sources, sections, [])
+        index = writer._build_source_index(entries)
+
+        assert entries == [
+            {
+                "title": "Primary Source",
+                "link": "https://example.com/primary",
+            },
+            {
+                "title": "Section Source",
+                "link": "https://example.com/section",
+            },
+        ]
+        assert index["https://example.com/primary"] == 1
+        assert index["https://example.com/section"] == 2
 
 
 # ═══════════════════════════════════════════════════════════════════

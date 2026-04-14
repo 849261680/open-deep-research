@@ -7,6 +7,9 @@ from ..models.research_task import Citation
 from ..models.research_task import ResearchSection
 from ..models.research_task import ResearchTask
 from ..models.research_task import ResearchTaskStatus
+from ..models.research_task import utc_now
+from ..services.evidence_store import EvidenceStore
+from ..services.research_repository import ResearchRepository
 from .conductor import ResearchConductor
 from .cost_tracker import CostTracker
 from .models import ResearchSource
@@ -21,6 +24,7 @@ class ResearchAgent:
         self,
         *,
         query: str,
+        repository: ResearchRepository | None = None,
         max_sub_queries: int = 5,
         max_concurrency: int = 3,
     ) -> None:
@@ -32,6 +36,9 @@ class ResearchAgent:
         self.context: list[SubQueryContext] = []
         self.research_sources: list[ResearchSource] = []
         self.visited_urls: set[str] = set()
+        self.repository = repository
+        self.task_id: str | None = None
+        self.evidence_store = EvidenceStore()
         self.cost_tracker = CostTracker()
         self.conductor = ResearchConductor(self)
         self.writer = ResearchWriter(self.cost_tracker)
@@ -42,6 +49,7 @@ class ResearchAgent:
         async def collect_event(event: dict[str, object]) -> None:
             await event_queue.put(event)
 
+        self.task_id = task.id
         task.status = ResearchTaskStatus.PLANNING
         conduct_task = asyncio.create_task(
             self.conductor.conduct_research(on_event=collect_event)
@@ -79,6 +87,11 @@ class ResearchAgent:
                         }
                     else:
                         yield event
+                elif event["type"] == "step_complete":
+                    event_data = event.get("data")
+                    if isinstance(event_data, dict):
+                        self._apply_step_complete(task, event_data)
+                    yield event
                 else:
                     yield event
 
@@ -96,6 +109,7 @@ class ResearchAgent:
 
             report = await self.writer.write_report(
                 query=task.query,
+                sections=task.sections,
                 context=contexts,
                 sources=self.research_sources,
             )
@@ -162,15 +176,11 @@ class ResearchAgent:
                     expected_outcome="收集并压缩与该子查询相关的上下文",
                     status="completed",
                     analysis=context.context,
-                    citations=[
-                        Citation(
-                            title=source.title,
-                            link=source.link,
-                            source=source.source,
-                            query=source.query,
-                        )
-                        for source in context.sources[:5]
-                    ],
+                    citations=context.citations,
+                    evidence_ids=context.evidence_ids,
+                    compressed_evidence=context.compressed_evidence,
+                    verification=context.verification,
+                    completed_at=utc_now(),
                 )
             )
         return sections
@@ -188,3 +198,33 @@ class ResearchAgent:
             )
             for index, sub_query in enumerate(sub_queries, start=1)
         ]
+
+    def _apply_step_complete(self, task: ResearchTask, event_data: dict[str, object]) -> None:
+        step = event_data.get("step")
+        if not isinstance(step, int):
+            return
+
+        section = next((item for item in task.sections if item.step == step), None)
+        if section is None:
+            return
+
+        section.status = str(event_data.get("status", "completed"))
+        section.analysis = str(event_data.get("analysis", section.analysis))
+        section.evidence_ids = [
+            str(item) for item in event_data.get("evidence_ids", section.evidence_ids)
+        ]
+        section.compressed_evidence = str(
+            event_data.get("compressed_evidence", section.compressed_evidence)
+        )
+        verification = event_data.get("verification", section.verification)
+        if isinstance(verification, dict):
+            section.verification = verification
+        citations = event_data.get("citations", [])
+        if isinstance(citations, list):
+            section.citations = [
+                Citation.model_validate(item)
+                for item in citations
+                if isinstance(item, dict)
+            ]
+        section.completed_at = utc_now()
+        task.touch()

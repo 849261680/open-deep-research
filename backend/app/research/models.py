@@ -3,6 +3,8 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic import Field
 
+from ..models.research_task import Citation
+
 
 class ResearchQuestion(BaseModel):
     id: str
@@ -39,4 +41,8 @@ class SubQueryContext(BaseModel):
     step: int
     query: str
     sources: list[ResearchSource] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    compressed_evidence: str = ""
+    verification: dict[str, object] = Field(default_factory=dict)
     context: str = ""

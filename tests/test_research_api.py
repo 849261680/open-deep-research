@@ -246,6 +246,53 @@ def test_anonymous_history_only_returns_anonymous_tasks(tmp_path) -> None:
     assert anonymous_task_ids == ["anon-task"]
 
 
+def test_clear_research_history_only_deletes_current_user_tasks(
+    client: TestClient,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    repository = ResearchOrchestrator().repository
+    repository.db_path = str(tmp_path / "research.db")
+    repository._ensure_db()
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.repository",
+        repository,
+    )
+
+    repository.save_task(
+        ResearchTask(
+            id="user-task-to-clear",
+            user_id=1,
+            query="owned query",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+    repository.save_task(
+        ResearchTask(
+            id="other-user-task",
+            user_id=2,
+            query="other query",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+    repository.save_task(
+        ResearchTask(
+            id="anonymous-task",
+            user_id=None,
+            query="anonymous query",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+
+    response = client.delete("/api/research/history", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["cleared"] == 1
+    assert repository.load_task("user-task-to-clear", user_id=1) is None
+    assert repository.load_task("other-user-task", user_id=2) is not None
+    assert repository.load_task("anonymous-task", user_id=None) is not None
+
+
 def test_resume_reruns_incomplete_task_with_research_agent(monkeypatch, tmp_path) -> None:
     orchestrator = ResearchOrchestrator()
     orchestrator.repository.db_path = str(tmp_path / "research.db")
@@ -359,6 +406,22 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
         step=1,
         query="DeepSeek 企业落地案例有哪些？",
         context="发现 A",
+        evidence_ids=["evidence-1"],
+        compressed_evidence="研究主题: DeepSeek 企业落地案例有哪些？",
+        verification={
+            "passed": True,
+            "score": 1.0,
+            "issues": [],
+            "summary": "证据充分",
+        },
+        citations=[
+            Citation(
+                title="Source A",
+                link="https://example.com/a",
+                source="web",
+                query="DeepSeek enterprise case study",
+            )
+        ],
         sources=[
             ResearchSource(
                 title="Source A",
@@ -417,5 +480,8 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
     assert report_complete["data"]["report"] == "# report"
     assert report_complete["data"]["cost_summary"]["total_tokens"] > 0
     assert report_complete["data"]["results"][0]["title"] == context.query
+    assert report_complete["data"]["results"][0]["verification"]["passed"] is True
+    assert report_complete["data"]["results"][0]["compressed_evidence"] == context.compressed_evidence
+    assert report_complete["data"]["sections"][0]["evidence_ids"] == context.evidence_ids
     assert task.cost_summary["total_tokens"] > 0
     assert task.sections[0].tool == "research_conductor"
