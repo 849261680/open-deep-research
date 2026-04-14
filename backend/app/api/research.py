@@ -1,15 +1,18 @@
 import json
+import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..core.deps import get_current_user
 from ..core.deps import get_optional_current_user
 from ..core.orchestrator import research_orchestrator
 from ..models.user import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -17,6 +20,16 @@ router = APIRouter()
 class ResearchRequest(BaseModel):
     query: str
     stream: bool | None = True
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("研究问题不能为空")
+        if len(v) > 500:
+            raise ValueError("研究问题不能超过500个字符")
+        return v
 
 
 class ResearchResponse(BaseModel):
@@ -46,9 +59,6 @@ async def start_research(
     current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
     """开始研究任务"""
-    if not request.query.strip():
-        raise HTTPException(status_code=400, detail="研究问题不能为空")
-
     user_id = current_user.id if current_user else None
 
     if request.stream:
@@ -59,9 +69,10 @@ async def start_research(
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
+                logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
                 error_update = {
                     "type": "error",
-                    "message": f"研究过程中发生错误: {str(e)}",
+                    "message": "研究过程中发生错误，请稍后重试",
                     "data": None,
                 }
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
@@ -89,7 +100,8 @@ async def start_research(
             data=final_payload or {"updates": results},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"研究失败: {str(e)}") from e
+        logger.exception("研究任务执行失败（非流式）query=%r user_id=%s", request.query, user_id)
+        raise HTTPException(status_code=500, detail="研究失败，请稍后重试") from e
 
 
 @router.post("/research/resume", response_model=None)
@@ -111,9 +123,10 @@ async def resume_research(
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
+                logger.exception("恢复研究任务失败 task_id=%r user_id=%s", request.task_id, user_id)
                 error_update = {
                     "type": "error",
-                    "message": f"恢复研究过程中发生错误: {str(e)}",
+                    "message": "恢复研究过程中发生错误，请稍后重试",
                     "data": None,
                 }
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
@@ -142,7 +155,8 @@ async def resume_research(
             data=final_payload or {"updates": results},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"恢复研究失败: {str(e)}") from e
+        logger.exception("恢复研究任务失败（非流式）task_id=%r user_id=%s", request.task_id, user_id)
+        raise HTTPException(status_code=500, detail="恢复研究失败，请稍后重试") from e
 
 
 @router.post("/research/stop")

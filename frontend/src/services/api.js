@@ -2,13 +2,11 @@ import axios from 'axios';
 import errorHandler from './errorHandler';
 
 // API基础配置 - 优先使用生产环境配置，然后是本地配置
-const API_BASE_URL = process.env.REACT_APP_API_URL || 
-                    (window.location.hostname === 'localhost' ? 'http://localhost:8000' : 
-                     window.location.origin.includes('railway.app') ? 
-                     `${window.location.protocol}//${window.location.hostname}` : 
+const API_BASE_URL = process.env.REACT_APP_API_URL ||
+                    (window.location.hostname === 'localhost' ? 'http://localhost:8000' :
+                     window.location.origin.includes('railway.app') ?
+                     `${window.location.protocol}//${window.location.hostname}` :
                      'http://localhost:8000');
-console.log('API_BASE_URL:', API_BASE_URL);
-console.log('当前域名:', window.location.hostname);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -31,30 +29,15 @@ api.interceptors.response.use(
 // 请求拦截器：自动附加 JWT token
 api.interceptors.request.use(
   (config) => {
-    console.log('API请求:', config.method?.toUpperCase(), config.url);
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    console.error('请求错误:', error);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// 响应拦截器
-api.interceptors.response.use(
-  (response) => {
-    console.log('API响应:', response.status, response.config.url);
-    return response;
-  },
-  (error) => {
-    console.error('响应错误:', error.response?.status, error.message);
-    return Promise.reject(error);
-  }
-);
 
 // 研究API
 export const researchAPI = {

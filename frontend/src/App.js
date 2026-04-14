@@ -115,12 +115,8 @@ function AppContent() {
     activeResearchRef.current = research;
 
     try {
-      console.log('开始研究:', query);
-
       // 使用流式API
       await researchAPI.startResearchStream(query, (update) => {
-        console.log('🔍 收到更新:', update.type);
-
         setStreamingData(prev => [...prev, update]);
 
         const serverTaskId = update.data?.task_id || update.data?.id;
@@ -133,7 +129,6 @@ function AppContent() {
 
         // 如果研究完成，设置最终数据
         if (update.type === 'report_complete') {
-          console.log('🎯 研究完成');
           setResearchData(update.data);
           // 更新历史记录
           updateResearch(research.id, {
@@ -142,7 +137,6 @@ function AppContent() {
           });
           activeResearchRef.current = null;
         } else if (update.type === 'error') {
-          console.log('❌ 研究出错');
           setError(update.message);
           updateResearch(research.id, {
             status: 'failed',
@@ -169,7 +163,6 @@ function AppContent() {
 
         // 尝试非流式API
         try {
-          console.log('网络错误，尝试非流式API...');
           const result = await researchAPI.startResearch(query);
           const finalData = result.data || result;
           if (finalData.id && finalData.id !== research.id) {
