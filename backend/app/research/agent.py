@@ -21,7 +21,7 @@ class ResearchAgent:
         self,
         *,
         query: str,
-        max_sub_queries: int = 3,
+        max_sub_queries: int = 5,
         max_concurrency: int = 3,
     ) -> None:
         self.query = query

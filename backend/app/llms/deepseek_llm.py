@@ -46,11 +46,12 @@ class DeepSeekLLM(BaseLLM):
     ) -> LLMResult:
         """Generate text from DeepSeek API asynchronously."""
         prompt = prompts[0]
+        temperature = kwargs.get("temperature", self.temperature)
         response = await deepseek_service.generate_response(
             prompt,
             self.max_tokens,
             model=self.model_name,
-            temperature=self.temperature,
+            temperature=float(temperature) if temperature is not None else None,
         )
         generation = Generation(text=response)
         return LLMResult(generations=[[generation]])
@@ -73,8 +74,19 @@ class DeepSeekLLM(BaseLLM):
         run_manager: object | None = None,
         **kwargs: object,
     ) -> str:
-        """Call DeepSeek API asynchronously."""
-        result = await self._agenerate([prompt], stop, run_manager, **kwargs)
+        """Call DeepSeek API asynchronously.
+
+        Accepts an optional ``temperature`` kwarg to override the default.
+        """
+        temperature = kwargs.pop("temperature", None)
+        if temperature is not None:
+            result = await self._agenerate(
+                [prompt], stop, run_manager,
+                temperature=temperature,
+                **kwargs,
+            )
+        else:
+            result = await self._agenerate([prompt], stop, run_manager, **kwargs)
         return result.generations[0][0].text
 
     @property

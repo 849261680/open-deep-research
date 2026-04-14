@@ -60,7 +60,7 @@ def test_non_stream_research_returns_final_payload(monkeypatch, client: TestClie
         }
 
     monkeypatch.setattr(
-        "backend.app.api.research.langchain_research_agent.conduct_research",
+        "backend.app.api.research.research_orchestrator.run",
         fake_conduct_research,
     )
 
@@ -96,7 +96,7 @@ def test_non_stream_research_allows_anonymous_access(monkeypatch) -> None:
         }
 
     monkeypatch.setattr(
-        "backend.app.api.research.langchain_research_agent.conduct_research",
+        "backend.app.api.research.research_orchestrator.run",
         fake_conduct_research,
     )
 
@@ -120,7 +120,7 @@ def test_stream_research_emits_error_event_on_failure(
         yield {"type": "report_complete", "message": "unused", "data": None}
 
     monkeypatch.setattr(
-        "backend.app.api.research.langchain_research_agent.conduct_research",
+        "backend.app.api.research.research_orchestrator.run",
         failing_conduct_research,
     )
 

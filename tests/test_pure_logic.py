@@ -2,12 +2,11 @@
 纯逻辑单元测试 — 不依赖任何外部 API / 网络 / 数据库。
 覆盖范围：
   - ResearchOrchestrator._event
-  - ResearchExecutor._combine_search_results / _extract_search_sources
-  - ReportGenerator._limit_input_length / _format_analyses_text / _collect_step_analyses
   - VerifierService._deterministic_verify / _parse_json
-  - ResearchPlanner._parse_plan_response / _get_default_plan
   - ContentExtractionService._extract_content_sync (HTML 清洗，本地字符串)
   - DeepSeekService._truncate_prompt / _build_payload
+  - CostTracker / estimate_tokens
+  - SourceCurator 可信度评分
 """
 from __future__ import annotations
 
@@ -20,11 +19,10 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 
 # ── 被测模块 ─────────────────────────────────────────────────────────────────
-from backend.app.agents.report_generator import ReportGenerator
-from backend.app.agents.research_planner import ResearchPlanner
-from backend.app.agents.research_executor import ResearchExecutor
 from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.models.research_task import Citation
+from backend.app.research.source_curator import SourceCurator, _score_source
+from backend.app.research.models import ResearchSource
 from backend.app.services.content_extraction_service import ContentExtractionService
 from backend.app.services.deepseek_service import DeepSeekService
 from backend.app.services.verifier_service import VerifierService
@@ -49,147 +47,75 @@ class TestEventHelper:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# ResearchExecutor
+# SourceCurator — 可信度评分
 # ═══════════════════════════════════════════════════════════════════
 
-class TestCombineSearchResults:
-    executor = ResearchExecutor()
+class TestScoreSource:
+    def test_gov_domain_gets_high_score(self):
+        source = ResearchSource(title="T", link="https://data.gov.cn/report", snippet="s" * 60, extracted_content="c" * 300)
+        score = _score_source(source)
+        assert score >= 0.7
 
-    def test_merges_same_source_across_queries(self):
-        results = {
-            "q1": {"web": [{"title": "A"}]},
-            "q2": {"web": [{"title": "B"}]},
-        }
-        combined = self.executor._combine_search_results(results)
-        assert len(combined["web"]) == 2
+    def test_academic_domain_gets_high_score(self):
+        source = ResearchSource(title="T", link="https://arxiv.org/abs/1234", snippet="s" * 60, extracted_content="c" * 300)
+        score = _score_source(source)
+        assert score >= 0.7
 
-    def test_merges_different_sources(self):
-        results = {
-            "q1": {"web": [{"title": "A"}], "academic": [{"title": "X"}]},
-        }
-        combined = self.executor._combine_search_results(results)
-        assert "web" in combined
-        assert "academic" in combined
+    def test_social_media_gets_low_score(self):
+        source = ResearchSource(title="T", link="https://reddit.com/r/test", snippet="s" * 60, extracted_content="c" * 300)
+        score = _score_source(source)
+        assert score < 0.5
 
-    def test_empty_input_returns_empty_dict(self):
-        assert self.executor._combine_search_results({}) == {}
+    def test_empty_link_returns_zero(self):
+        source = ResearchSource(title="T", link="", snippet="s")
+        assert _score_source(source) == 0.0
 
-    def test_empty_source_list_is_preserved(self):
-        results = {"q1": {"web": []}}
-        combined = self.executor._combine_search_results(results)
-        assert combined["web"] == []
+    def test_authoritative_media_gets_bonus(self):
+        source = ResearchSource(title="T", link="https://www.reuters.com/article/123", snippet="s" * 60, extracted_content="c" * 300)
+        score = _score_source(source)
+        assert score >= 0.7
 
-
-class TestExtractSearchSources:
-    executor = ResearchExecutor()
-
-    def test_extracts_title_link_source_query(self):
-        search_result = {
-            "web": [
-                {"title": "Page A", "link": "https://a.com", "snippet": "..."},
-                {"title": "Page B", "link": "https://b.com", "snippet": "..."},
-            ]
-        }
-        sources = self.executor._extract_search_sources(search_result, "my query")
-        assert sources[0]["title"] == "Page A"
-        assert sources[0]["link"] == "https://a.com"
-        assert sources[0]["source"] == "web"
-        assert sources[0]["query"] == "my query"
-
-    def test_limits_to_three_per_source(self):
-        items = [{"title": f"T{i}", "link": f"https://{i}.com"} for i in range(6)]
-        sources = self.executor._extract_search_sources({"web": items}, "q")
-        assert len(sources) == 3
-
-    def test_skips_items_without_title_or_link(self):
-        search_result = {
-            "web": [
-                {"title": "OK", "link": "https://ok.com"},
-                {"snippet": "no title or link"},
-            ]
-        }
-        sources = self.executor._extract_search_sources(search_result, "q")
-        assert len(sources) == 1
-
-    def test_empty_result_returns_empty_list(self):
-        assert self.executor._extract_search_sources({}, "q") == []
+    def test_no_content_slightly_lower(self):
+        source_with = ResearchSource(title="T", link="https://example.com/a", snippet="s" * 60, extracted_content="c" * 300)
+        source_without = ResearchSource(title="T", link="https://example.com/b", snippet="short", extracted_content="")
+        assert _score_source(source_with) > _score_source(source_without)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# ReportGenerator
-# ═══════════════════════════════════════════════════════════════════
+class TestSourceCurator:
+    curator = SourceCurator()
 
-class TestLimitInputLength:
-    gen = ReportGenerator()
-
-    def test_short_text_is_unchanged(self):
-        text = "short"
-        assert self.gen._limit_input_length(text, max_length=100) == "short"
-
-    def test_long_text_is_truncated(self):
-        text = "x" * 2000
-        result = self.gen._limit_input_length(text, max_length=100)
-        assert len(result) <= 120  # 100 + truncation suffix
-        assert "[内容已截断]" in result
-
-    def test_exact_boundary_is_not_truncated(self):
-        text = "x" * 100
-        assert self.gen._limit_input_length(text, max_length=100) == text
-
-
-class TestFormatAnalysesText:
-    gen = ReportGenerator()
-
-    def test_formats_with_bold_titles(self):
-        analyses = [{"title": "步骤一", "analysis": "内容A"}]
-        result = self.gen._format_analyses_text(analyses)
-        assert "**步骤一**" in result
-        assert "内容A" in result
-
-    def test_multiple_analyses_joined_by_double_newline(self):
-        analyses = [
-            {"title": "A", "analysis": "a"},
-            {"title": "B", "analysis": "b"},
+    def test_deduplicates_by_link(self):
+        sources = [
+            ResearchSource(title="A", link="https://a.com", snippet="content"),
+            ResearchSource(title="A2", link="https://a.com", snippet="other"),
         ]
-        result = self.gen._format_analyses_text(analyses)
-        assert "\n\n" in result
-        assert result.index("**A**") < result.index("**B**")
+        result = self.curator.curate(sources)
+        assert len(result) == 1
 
-    def test_empty_list_returns_empty_string(self):
-        assert self.gen._format_analyses_text([]) == ""
-
-
-class TestCollectStepAnalyses:
-    gen = ReportGenerator()
-
-    def test_only_completed_steps_are_collected(self):
-        results = [
-            {"status": "completed", "title": "Step 1", "analysis": "ok", "citations": []},
-            {"status": "failed",    "title": "Step 2", "analysis": "no", "citations": []},
+    def test_filters_empty_link(self):
+        sources = [
+            ResearchSource(title="A", link="", snippet="content"),
         ]
-        analyses = self.gen._collect_step_analyses(results)
-        assert len(analyses) == 1
-        assert analyses[0]["title"] == "Step 1"
+        result = self.curator.curate(sources)
+        assert len(result) == 0
 
-    def test_citations_are_appended_to_analysis(self):
-        results = [
-            {
-                "status": "completed",
-                "title": "Step 1",
-                "analysis": "分析内容",
-                "citations": [{"title": "来源A", "link": "https://a.com"}],
-            }
+    def test_respects_max_sources(self):
+        sources = [
+            ResearchSource(title=f"T{i}", link=f"https://{i}.com", snippet="s" * 60, extracted_content="c" * 300)
+            for i in range(20)
         ]
-        analyses = self.gen._collect_step_analyses(results)
-        assert "来源A" in analyses[0]["analysis"]
-        assert "https://a.com" in analyses[0]["analysis"]
+        result = self.curator.curate(sources, max_sources=5)
+        assert len(result) == 5
 
-    def test_citation_limit_is_five(self):
-        citations = [{"title": f"S{i}", "link": f"https://{i}.com"} for i in range(10)]
-        results = [{"status": "completed", "title": "T", "analysis": "A", "citations": citations}]
-        analyses = self.gen._collect_step_analyses(results)
-        # 只有前 5 个 citation 被追加
-        assert analyses[0]["analysis"].count("https://") == 5
+    def test_sorts_by_credibility(self):
+        sources = [
+            ResearchSource(title="Reddit", link="https://reddit.com/r/test", snippet="s" * 60, extracted_content="c" * 300),
+            ResearchSource(title="Gov", link="https://stats.gov.cn/data", snippet="s" * 60, extracted_content="c" * 300),
+            ResearchSource(title="Random", link="https://random-blog.xyz/post", snippet="s" * 60, extracted_content="c" * 300),
+        ]
+        result = self.curator.curate(sources)
+        # Gov should be first
+        assert "gov.cn" in result[0].link
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -256,60 +182,6 @@ class TestParseJson:
 
     def test_returns_none_when_root_is_list(self):
         assert self.svc._parse_json("[1, 2, 3]") is None
-
-
-# ═══════════════════════════════════════════════════════════════════
-# ResearchPlanner
-# ═══════════════════════════════════════════════════════════════════
-
-class TestParsePlanResponse:
-    planner = ResearchPlanner()
-
-    def _make_plan(self, steps=None):
-        if steps is None:
-            steps = [{"step": 1, "title": "背景调研"}]
-        return {"research_plan": steps}
-
-    def test_parses_plain_json_string(self):
-        raw = json.dumps(self._make_plan())
-        plan = self.planner._parse_plan_response(raw)
-        assert len(plan) == 1
-        assert plan[0]["title"] == "背景调研"
-
-    def test_parses_markdown_fenced_json(self):
-        raw = "```json\n" + json.dumps(self._make_plan()) + "\n```"
-        plan = self.planner._parse_plan_response(raw)
-        assert plan[0]["step"] == 1
-
-    def test_returns_empty_list_when_key_missing(self):
-        raw = json.dumps({"other_key": []})
-        plan = self.planner._parse_plan_response(raw)
-        assert plan == []
-
-    def test_preserves_multiple_steps(self):
-        steps = [{"step": i, "title": f"Step {i}"} for i in range(1, 4)]
-        raw = json.dumps({"research_plan": steps})
-        plan = self.planner._parse_plan_response(raw)
-        assert len(plan) == 3
-
-
-class TestGetDefaultPlan:
-    planner = ResearchPlanner()
-
-    def test_returns_three_steps(self):
-        plan = self.planner._get_default_plan("AI 趋势")
-        assert len(plan) == 3
-
-    def test_query_is_embedded_in_search_queries(self):
-        plan = self.planner._get_default_plan("量子计算")
-        all_queries = [q for step in plan for q in step["search_queries"]]
-        assert any("量子计算" in q for q in all_queries)
-
-    def test_all_steps_have_required_keys(self):
-        plan = self.planner._get_default_plan("test")
-        for step in plan:
-            for key in ("step", "title", "description", "tool", "search_queries", "expected_outcome"):
-                assert key in step
 
 
 # ═══════════════════════════════════════════════════════════════════

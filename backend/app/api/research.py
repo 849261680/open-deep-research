@@ -6,7 +6,6 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..agents.langchain_research_agent import langchain_research_agent
 from ..core.deps import get_current_user
 from ..core.deps import get_optional_current_user
 from ..core.orchestrator import research_orchestrator
@@ -50,12 +49,13 @@ async def start_research(
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="研究问题不能为空")
 
+    user_id = current_user.id if current_user else None
+
     if request.stream:
-        # 流式响应
         async def generate() -> AsyncGenerator[str, None]:
             try:
-                async for update in langchain_research_agent.conduct_research(
-                    request.query, user_id=current_user.id if current_user else None
+                async for update in research_orchestrator.run(
+                    request.query, user_id=user_id
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
@@ -71,12 +71,11 @@ async def start_research(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
-    # 非流式响应
     try:
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in langchain_research_agent.conduct_research(
-            request.query, user_id=current_user.id if current_user else None
+        async for update in research_orchestrator.run(
+            request.query, user_id=user_id
         ):
             results.append(update)
             if update.get("type") == "report_complete" and isinstance(
@@ -102,11 +101,13 @@ async def resume_research(
     if not request.task_id.strip():
         raise HTTPException(status_code=400, detail="任务ID不能为空")
 
+    user_id = current_user.id if current_user else None
+
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
                 async for update in research_orchestrator.resume_task(
-                    request.task_id, user_id=current_user.id if current_user else None
+                    request.task_id, user_id=user_id
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as e:
@@ -127,7 +128,7 @@ async def resume_research(
         results = []
         final_payload: dict[str, object] | None = None
         async for update in research_orchestrator.resume_task(
-            request.task_id, user_id=current_user.id if current_user else None
+            request.task_id, user_id=user_id
         ):
             results.append(update)
             if update.get("type") in {"report_complete", "error"} and isinstance(
@@ -174,7 +175,7 @@ async def get_research_status(
     """获取研究状态"""
     return {
         "status": "ready",
-        "steps": langchain_research_agent.get_research_history(
+        "steps": research_orchestrator.get_history(
             user_id=current_user.id if current_user else None
         ),
         "message": "研究代理已准备就绪",
@@ -186,7 +187,7 @@ async def get_research_history(
     current_user: User | None = Depends(get_optional_current_user),
 ):
     """获取研究历史"""
-    history = langchain_research_agent.get_research_history(
+    history = research_orchestrator.get_history(
         user_id=current_user.id if current_user else None
     )
     return {
@@ -212,9 +213,9 @@ async def get_research_task(
 
 @router.delete("/research/history")
 async def clear_research_history(_current_user: User = Depends(get_current_user)):
-    """清空研究历史和记忆"""
-    langchain_research_agent.clear_memory()
-    return {"message": "研究历史和记忆已清空"}
+    """清空研究历史"""
+    research_orchestrator.clear()
+    return {"message": "研究历史已清空"}
 
 
 @router.get("/health")
