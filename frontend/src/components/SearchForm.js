@@ -73,13 +73,6 @@ const SearchForm = ({
           </Button>
         )}
       </div>
-
-      {/* 提示文字 */}
-      {!isLoading && (
-        <p className="mt-2 text-xs text-text-tertiary">
-          按 Enter 键提交，Shift + Enter 换行
-        </p>
-      )}
     </form>
   );
 };
