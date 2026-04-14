@@ -122,6 +122,7 @@ class ResearchOrchestrator:
             )
             return
 
+        self.repository.delete_evidence_for_task(task.id)
         yield self._event("resume", "正在重新运行未完成研究任务...", {"task_id": task.id})
         async for update in self.run_task(task):
             yield update

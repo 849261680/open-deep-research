@@ -102,6 +102,15 @@ class ResearchRepository:
             )
             conn.commit()
 
+    def delete_evidence_for_task(self, task_id: str) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM evidence_items WHERE task_id = ?",
+                (task_id,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
     def load_tasks(self, user_id: int | None = None) -> list[dict[str, object]]:
         with sqlite3.connect(self.db_path) as conn:
             if user_id is None:

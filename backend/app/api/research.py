@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends
@@ -47,6 +48,21 @@ class StopResearchRequest(BaseModel):
     task_id: str
 
 
+def _stream_error_payload(message: str, exc: Exception) -> dict[str, object]:
+    data: dict[str, object] | None = None
+    if os.getenv("RESEARCH_STREAM_INCLUDE_ERROR_DETAIL", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        data = {"detail": str(exc)}
+    return {
+        "type": "error",
+        "message": message,
+        "data": data,
+    }
+
+
 @router.options("/research")
 async def research_options():
     """处理CORS预检请求"""
@@ -70,11 +86,10 @@ async def start_research(
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
-                error_update = {
-                    "type": "error",
-                    "message": "研究过程中发生错误，请稍后重试",
-                    "data": {"detail": str(exc)},
-                }
+                error_update = _stream_error_payload(
+                    "研究过程中发生错误，请稍后重试",
+                    exc,
+                )
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
@@ -124,11 +139,10 @@ async def resume_research(
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 logger.exception("恢复研究任务失败 task_id=%r user_id=%s", request.task_id, user_id)
-                error_update = {
-                    "type": "error",
-                    "message": "恢复研究过程中发生错误，请稍后重试",
-                    "data": {"detail": str(exc)},
-                }
+                error_update = _stream_error_payload(
+                    "恢复研究过程中发生错误，请稍后重试",
+                    exc,
+                )
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(

@@ -329,6 +329,7 @@ class ResearchWriter:
         for idx, entry in enumerate(reference_entries[:10], start=1):
             source_lines.append(f"- [{idx}] {entry['title']}: {entry['link']}")
         findings_block = "\n\n".join(findings)
+        source_lines_block = "\n".join(source_lines)
 
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         return f"""\
@@ -342,7 +343,7 @@ class ResearchWriter:
 
 ## 参考来源
 
-{"".join(source_lines)}
+{source_lines_block}
 
 ## 研究限制
 

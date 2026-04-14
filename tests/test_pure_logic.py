@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from unittest.mock import MagicMock
 
 # ── 避免导入时触发真实 DB / env 初始化 ──────────────────────────────────────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_logic.db")
@@ -31,6 +32,7 @@ from backend.app.services.content_extraction_service import ContentExtractionSer
 from backend.app.services.deepseek_service import DeepSeekService
 from backend.app.services.evidence_store import EvidenceStore
 from backend.app.services.research_repository import ResearchRepository
+from backend.app.services.search_tools import SearchTools
 from backend.app.services.verifier_service import VerifierService
 from backend.app.research.cost_tracker import CostTracker
 from backend.app.research.cost_tracker import estimate_tokens
@@ -205,6 +207,43 @@ class TestResearchWriter:
         ]
         assert index["https://example.com/primary"] == 1
         assert index["https://example.com/section"] == 2
+
+    def test_fallback_report_separates_source_lines(self):
+        writer = ResearchWriter()
+        report = writer._fallback_report(
+            query="DeepSeek",
+            sections=[],
+            context=[],
+            sources=[
+                ResearchSource(title="A", link="https://example.com/a"),
+                ResearchSource(title="B", link="https://example.com/b"),
+            ],
+        )
+
+        assert "- [1] A: https://example.com/a\n- [2] B: https://example.com/b" in report
+
+
+class TestSearchTools:
+    def test_google_search_uses_thread_offload(self, monkeypatch):
+        search_tools = SearchTools()
+        search_tools.serpapi_key = "test-serpapi"
+
+        async def fake_to_thread(func, *args, **kwargs):  # noqa: ANN001
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr("backend.app.services.search_tools.asyncio.to_thread", fake_to_thread)
+        monkeypatch.setattr(
+            search_tools,
+            "_sync_google_search",
+            MagicMock(return_value=[{"title": "A", "link": "https://a.com"}]),
+        )
+
+        import asyncio
+
+        result = asyncio.run(search_tools.google_search("DeepSeek"))
+
+        search_tools._sync_google_search.assert_called_once_with("DeepSeek", 10)
+        assert result == [{"title": "A", "link": "https://a.com"}]
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -81,6 +81,18 @@ class SearchTools:
         if not self.serpapi_key:
             return await self.tavily_search(query, num_results)
 
+        try:
+            result = await asyncio.to_thread(self._sync_google_search, query, num_results)
+            if result:
+                return result
+            return await self.tavily_search(query, num_results)
+        except Exception as e:
+            logger.error("Google search error: %s", e)
+            return await self.tavily_search(query, num_results)
+
+    def _sync_google_search(
+        self, query: str, num_results: int = 10
+    ) -> list[dict[str, object]]:
         url = "https://serpapi.com/search"
         params = {
             "q": query,
@@ -89,30 +101,25 @@ class SearchTools:
             "engine": "google",
         }
 
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                results = []
-
-                for result in data.get("organic_results", []):
-                    results.append(
-                        {
-                            "title": result.get("title", ""),
-                            "link": result.get("link", ""),
-                            "snippet": result.get("snippet", ""),
-                            "source": "google",
-                        }
-                    )
-
-                return results
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code != 200:
             logger.warning(
                 "Google search failed with status %d, using Tavily", response.status_code
             )
-            return await self.tavily_search(query, num_results)
-        except Exception as e:
-            logger.error("Google search error: %s", e)
-            return await self.tavily_search(query, num_results)
+            return []
+
+        data = response.json()
+        results = []
+        for result in data.get("organic_results", []):
+            results.append(
+                {
+                    "title": result.get("title", ""),
+                    "link": result.get("link", ""),
+                    "snippet": result.get("snippet", ""),
+                    "source": "google",
+                }
+            )
+        return results
 
     async def duckduckgo_search(
         self, query: str, num_results: int = 10

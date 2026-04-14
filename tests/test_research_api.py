@@ -137,7 +137,36 @@ def test_stream_research_emits_error_event_on_failure(
 
     assert response.status_code == 200
     assert '"type": "error"' in body
-    assert "boom" in body
+    assert "研究过程中发生错误，请稍后重试" in body
+    assert "boom" not in body
+
+
+def test_stream_research_can_include_error_detail_when_enabled(
+    monkeypatch, client: TestClient
+) -> None:
+    async def failing_conduct_research(query: str, user_id: int | None = None):
+        raise RuntimeError("boom")
+        yield {"type": "report_complete", "message": "unused", "data": None}
+
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.run",
+        failing_conduct_research,
+    )
+    monkeypatch.setenv("RESEARCH_STREAM_INCLUDE_ERROR_DETAIL", "true")
+
+    with client.stream(
+        "POST",
+        "/api/research",
+        json={"query": "test query", "stream": True},
+        headers=AUTH_HEADERS,
+    ) as response:
+        body = "".join(
+            chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            for chunk in response.iter_text()
+        )
+
+    assert response.status_code == 200
+    assert '"detail": "boom"' in body
 
 
 def test_verifier_falls_back_when_llm_json_is_invalid(monkeypatch) -> None:
@@ -337,6 +366,71 @@ def test_resume_reruns_incomplete_task_with_research_agent(monkeypatch, tmp_path
         event for event in events if event["type"] == "report_complete"
     )
     assert report_complete["data"]["report"] == "# rerun"
+
+
+def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
+    orchestrator = ResearchOrchestrator()
+    orchestrator.repository.db_path = str(tmp_path / "research.db")
+    orchestrator.repository._ensure_db()
+
+    task = ResearchTask(
+        id="task-resume-evidence",
+        user_id=1,
+        query="resume query",
+        status=ResearchTaskStatus.RESEARCHING,
+    )
+    orchestrator.repository.save_task(task)
+    from backend.app.models.research_task import EvidenceItem
+
+    orchestrator.repository.save_evidence(
+        task.id,
+        EvidenceItem(
+            id="evidence-old",
+            section_id="subquery-1",
+            query=task.query,
+            source_type="web",
+            title="Old Evidence",
+            link="https://example.com/old",
+            snippet="old",
+        ),
+    )
+
+    async def fake_agent_run(self, task):  # noqa: ANN001
+        task.status = ResearchTaskStatus.COMPLETED
+        yield {
+            "type": "report_complete",
+            "message": "done",
+            "data": {
+                "id": task.id,
+                "query": task.query,
+                "status": "completed",
+                "report": "# rerun",
+            },
+        }
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("backend.app.core.orchestrator.ResearchAgent.run", fake_agent_run)
+
+    events = []
+
+    async def collect() -> None:
+        async for event in orchestrator.resume_task(task.id, user_id=1):
+            events.append(event)
+
+    import asyncio
+    import sqlite3
+
+    asyncio.run(collect())
+    monkeypatch.undo()
+
+    with sqlite3.connect(orchestrator.repository.db_path) as conn:
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM evidence_items WHERE task_id = ?",
+            (task.id,),
+        ).fetchone()[0]
+
+    assert events[0]["type"] == "resume"
+    assert evidence_count == 0
 
 
 def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -> None:
