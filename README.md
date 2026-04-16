@@ -102,7 +102,7 @@ chmod +x scripts/migrate-to-uv.sh
 
 ### 5. 访问应用
 
-打开浏览器访问：`http://localhost:3000`
+打开浏览器访问：`http://localhost:3003`
 
 ## 🔧 开发工具
 
@@ -205,8 +205,8 @@ uv run command            # 在虚拟环境中运行命令
 
 # 开发相关
 ./scripts/dev.sh          # 启动开发环境
-./scripts/test.sh         # 运行测试
-./scripts/lint.sh        # 代码质量检查
+uv run pytest             # 运行后端测试
+uv run ruff check backend/app tests  # 代码质量检查
 
 # 部署相关
 uv build                 # 构建项目

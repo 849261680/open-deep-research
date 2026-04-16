@@ -51,6 +51,7 @@ class ResearchSection(BaseModel):
     status: str = "pending"
     analysis: str = ""
     citations: list[Citation] = Field(default_factory=list)
+    search_sources: list[dict[str, object]] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     compressed_evidence: str = ""
     verification: dict[str, object] = Field(default_factory=dict)
@@ -62,6 +63,7 @@ class ResearchSection(BaseModel):
 class ResearchTask(BaseModel):
     id: str
     user_id: int | None = None
+    guest_id: str | None = None
     query: str
     status: ResearchTaskStatus = ResearchTaskStatus.PENDING
     sections: list[ResearchSection] = Field(default_factory=list)

@@ -177,6 +177,15 @@ class ResearchAgent:
                     status="completed",
                     analysis=context.context,
                     citations=context.citations,
+                    search_sources=[
+                        {
+                            "title": source.title,
+                            "link": source.link,
+                            "source": source.source,
+                            "query": source.query,
+                        }
+                        for source in context.sources
+                    ],
                     evidence_ids=context.evidence_ids,
                     compressed_evidence=context.compressed_evidence,
                     verification=context.verification,
@@ -225,6 +234,11 @@ class ResearchAgent:
                 Citation.model_validate(item)
                 for item in citations
                 if isinstance(item, dict)
+            ]
+        search_sources = event_data.get("search_sources", [])
+        if isinstance(search_sources, list):
+            section.search_sources = [
+                item for item in search_sources if isinstance(item, dict)
             ]
         section.completed_at = utc_now()
         task.touch()

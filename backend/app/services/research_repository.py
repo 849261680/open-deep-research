@@ -41,6 +41,8 @@ class ResearchRepository:
             }
             if "user_id" not in columns:
                 conn.execute("ALTER TABLE research_tasks ADD COLUMN user_id INTEGER")
+            if "guest_id" not in columns:
+                conn.execute("ALTER TABLE research_tasks ADD COLUMN guest_id TEXT")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS evidence_items (
@@ -59,10 +61,11 @@ class ResearchRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO research_tasks (id, user_id, query, status, payload, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO research_tasks (id, user_id, guest_id, query, status, payload, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     user_id=excluded.user_id,
+                    guest_id=excluded.guest_id,
                     query=excluded.query,
                     status=excluded.status,
                     payload=excluded.payload,
@@ -71,6 +74,7 @@ class ResearchRepository:
                 (
                     task.id,
                     task.user_id,
+                    task.guest_id,
                     task.query,
                     task.status.value,
                     payload,
@@ -111,17 +115,13 @@ class ResearchRepository:
             conn.commit()
             return cursor.rowcount
 
-    def load_tasks(self, user_id: int | None = None) -> list[dict[str, object]]:
+    def load_tasks(
+        self,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> list[dict[str, object]]:
         with sqlite3.connect(self.db_path) as conn:
-            if user_id is None:
-                rows = conn.execute(
-                    """
-                    SELECT payload FROM research_tasks
-                    WHERE user_id IS NULL
-                    ORDER BY updated_at DESC
-                    """
-                ).fetchall()
-            else:
+            if user_id is not None:
                 rows = conn.execute(
                     """
                     SELECT payload FROM research_tasks
@@ -130,69 +130,112 @@ class ResearchRepository:
                     """,
                     (user_id,),
                 ).fetchall()
-        return [json.loads(row[0]) for row in rows]
-
-    def load_task(self, task_id: str, user_id: int | None = None) -> ResearchTask | None:
-        with sqlite3.connect(self.db_path) as conn:
-            if user_id is None:
-                row = conn.execute(
+            elif guest_id:
+                rows = conn.execute(
                     """
                     SELECT payload FROM research_tasks
-                    WHERE id = ? AND user_id IS NULL
+                    WHERE user_id IS NULL AND guest_id = ?
+                    ORDER BY updated_at DESC
                     """,
-                    (task_id,),
-                ).fetchone()
+                    (guest_id,),
+                ).fetchall()
             else:
+                rows = []
+        return [json.loads(row[0]) for row in rows]
+
+    def load_task(
+        self,
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> ResearchTask | None:
+        with sqlite3.connect(self.db_path) as conn:
+            if user_id is not None:
                 row = conn.execute(
                     "SELECT payload FROM research_tasks WHERE id = ? AND user_id = ?",
                     (task_id, user_id),
                 ).fetchone()
+            elif guest_id:
+                row = conn.execute(
+                    """
+                    SELECT payload FROM research_tasks
+                    WHERE id = ? AND user_id IS NULL AND guest_id = ?
+                    """,
+                    (task_id, guest_id),
+                ).fetchone()
+            else:
+                row = None
         if row is None:
             return None
         return ResearchTask.model_validate(json.loads(row[0]))
 
     def load_task_payload(
-        self, task_id: str, user_id: int | None = None
+        self,
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
     ) -> dict[str, object] | None:
-        task = self.load_task(task_id, user_id=user_id)
+        task = self.load_task(task_id, user_id=user_id, guest_id=guest_id)
         return task.model_dump() if task is not None else None
 
     def assign_anonymous_tasks_to_user(
-        self, task_ids: list[str], user_id: int
+        self,
+        task_ids: list[str],
+        user_id: int,
+        guest_id: str | None = None,
     ) -> int:
         normalized_task_ids = [task_id for task_id in task_ids if task_id]
-        if not normalized_task_ids:
+        if not normalized_task_ids and not guest_id:
             return 0
 
-        placeholders = ",".join("?" for _ in normalized_task_ids)
+        conditions = ["user_id IS NULL"]
+        params: list[object] = [user_id]
+
+        if guest_id:
+            conditions.append("guest_id = ?")
+            params.append(guest_id)
+
+        if normalized_task_ids:
+            placeholders = ",".join("?" for _ in normalized_task_ids)
+            conditions.append(f"id IN ({placeholders})")
+            params.extend(normalized_task_ids)
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 f"""
                 UPDATE research_tasks
                 SET user_id = ?
-                WHERE user_id IS NULL AND id IN ({placeholders})
+                WHERE {" AND ".join(conditions)}
                 """,
-                [user_id, *normalized_task_ids],
+                params,
             )
             conn.commit()
             return cursor.rowcount
 
-    def clear(self, user_id: int | None = None) -> int:
+    def clear(
+        self,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> int:
         with sqlite3.connect(self.db_path) as conn:
-            if user_id is None:
+            if user_id is None and guest_id is None:
                 deleted = conn.execute("SELECT COUNT(*) FROM research_tasks").fetchone()[0]
                 conn.execute("DELETE FROM evidence_items")
                 conn.execute("DELETE FROM research_tasks")
                 conn.commit()
                 return int(deleted)
 
-            task_ids = [
-                row[0]
-                for row in conn.execute(
+            if user_id is not None:
+                rows = conn.execute(
                     "SELECT id FROM research_tasks WHERE user_id = ?",
                     (user_id,),
                 ).fetchall()
-            ]
+            else:
+                rows = conn.execute(
+                    "SELECT id FROM research_tasks WHERE user_id IS NULL AND guest_id = ?",
+                    (guest_id,),
+                ).fetchall()
+            task_ids = [row[0] for row in rows]
             if not task_ids:
                 return 0
 

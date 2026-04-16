@@ -22,6 +22,7 @@ from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.research.agent import ResearchAgent
 from backend.app.research.models import ResearchSource
 from backend.app.research.models import SubQueryContext
+from backend.app.services.research_repository import ResearchRepository
 from backend.app.services.verifier_service import VerifierService
 
 
@@ -41,7 +42,11 @@ def client() -> TestClient:
 
 
 def test_non_stream_research_returns_final_payload(monkeypatch, client: TestClient) -> None:
-    async def fake_conduct_research(query: str, user_id: int | None = None):
+    async def fake_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ):
         yield {"type": "planning", "message": "planning", "data": None}
         yield {
             "type": "report_complete",
@@ -49,6 +54,7 @@ def test_non_stream_research_returns_final_payload(monkeypatch, client: TestClie
             "data": {
                 "id": "task-1",
                 "user_id": user_id,
+                "guest_id": guest_id,
                 "query": query,
                 "status": "completed",
                 "plan": [],
@@ -78,13 +84,18 @@ def test_non_stream_research_returns_final_payload(monkeypatch, client: TestClie
 
 
 def test_non_stream_research_allows_anonymous_access(monkeypatch) -> None:
-    async def fake_conduct_research(query: str, user_id: int | None = None):
+    async def fake_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ):
         yield {
             "type": "report_complete",
             "message": "done",
             "data": {
                 "id": "task-anon",
                 "user_id": user_id,
+                "guest_id": guest_id,
                 "query": query,
                 "status": "completed",
                 "plan": [],
@@ -115,7 +126,11 @@ def test_non_stream_research_allows_anonymous_access(monkeypatch) -> None:
 def test_stream_research_emits_error_event_on_failure(
     monkeypatch, client: TestClient
 ) -> None:
-    async def failing_conduct_research(query: str, user_id: int | None = None):
+    async def failing_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ):
         raise RuntimeError("boom")
         yield {"type": "report_complete", "message": "unused", "data": None}
 
@@ -144,7 +159,11 @@ def test_stream_research_emits_error_event_on_failure(
 def test_stream_research_can_include_error_detail_when_enabled(
     monkeypatch, client: TestClient
 ) -> None:
-    async def failing_conduct_research(query: str, user_id: int | None = None):
+    async def failing_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ):
         raise RuntimeError("boom")
         yield {"type": "report_complete", "message": "unused", "data": None}
 
@@ -197,13 +216,18 @@ def test_verifier_falls_back_when_llm_json_is_invalid(monkeypatch) -> None:
 def test_resume_research_returns_existing_completed_payload(
     monkeypatch, client: TestClient
 ) -> None:
-    async def fake_resume(task_id: str, user_id: int | None = None):
+    async def fake_resume(
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ):
         yield {
             "type": "report_complete",
             "message": "研究已完成",
             "data": {
                 "id": task_id,
                 "user_id": user_id,
+                "guest_id": guest_id,
                 "query": "restored query",
                 "status": "completed",
                 "plan": [],
@@ -247,32 +271,67 @@ def test_get_research_task_requires_authenticated_owner(client: TestClient) -> N
     assert response.json()["detail"] == "研究任务不存在"
 
 
-def test_anonymous_history_only_returns_anonymous_tasks(tmp_path) -> None:
-    repository = ResearchOrchestrator().repository
-    repository.db_path = str(tmp_path / "research.db")
-    repository._ensure_db()
-
+def test_anonymous_history_only_returns_guest_scoped_tasks(tmp_path) -> None:
+    repository = ResearchRepository(str(tmp_path / "research.db"))
     repository.save_task(
         ResearchTask(
-            id="anon-task",
+            id="anon-task-a",
             user_id=None,
-            query="public query",
+            guest_id="guestscope_a",
+            query="public query a",
             status=ResearchTaskStatus.COMPLETED,
         )
     )
     repository.save_task(
         ResearchTask(
-            id="user-task",
-            user_id=42,
-            query="private query",
+            id="anon-task-b",
+            user_id=None,
+            guest_id="guestscope_b",
+            query="public query b",
             status=ResearchTaskStatus.COMPLETED,
         )
     )
 
-    history = repository.load_tasks(user_id=None)
+    history = repository.load_tasks(guest_id="guestscope_a")
     anonymous_task_ids = [item["id"] for item in history]
 
-    assert anonymous_task_ids == ["anon-task"]
+    assert anonymous_task_ids == ["anon-task-a"]
+
+
+def test_anonymous_history_endpoint_is_scoped_by_guest_id(monkeypatch, tmp_path) -> None:
+    repository = ResearchRepository(str(tmp_path / "research.db"))
+    repository.save_task(
+        ResearchTask(
+            id="guest-task-a",
+            user_id=None,
+            guest_id="guestscope_a",
+            query="guest a",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+    repository.save_task(
+        ResearchTask(
+            id="guest-task-b",
+            user_id=None,
+            guest_id="guestscope_b",
+            query="guest b",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.repository",
+        repository,
+    )
+
+    with TestClient(app) as anonymous_client:
+        response = anonymous_client.get(
+            "/api/research/history",
+            headers={"X-Guest-Id": "guestscope_a"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["history"]] == ["guest-task-a"]
 
 
 def test_clear_research_history_only_deletes_current_user_tasks(
@@ -308,6 +367,7 @@ def test_clear_research_history_only_deletes_current_user_tasks(
         ResearchTask(
             id="anonymous-task",
             user_id=None,
+            guest_id="guestscope_a",
             query="anonymous query",
             status=ResearchTaskStatus.COMPLETED,
         )
@@ -319,7 +379,7 @@ def test_clear_research_history_only_deletes_current_user_tasks(
     assert response.json()["cleared"] == 1
     assert repository.load_task("user-task-to-clear", user_id=1) is None
     assert repository.load_task("other-user-task", user_id=2) is not None
-    assert repository.load_task("anonymous-task", user_id=None) is not None
+    assert repository.load_task("anonymous-task", guest_id="guestscope_a") is not None
 
 
 def test_resume_reruns_incomplete_task_with_research_agent(monkeypatch, tmp_path) -> None:

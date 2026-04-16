@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { authAPI } from '../services/api';
+import { authAPI, getGuestId } from '../services/api';
 
 const AuthContext = createContext(null);
 const RESEARCH_HISTORY_KEY = 'research-history';
@@ -46,7 +46,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('access_token', access_token);
     const taskIds = getAnonymousTaskIds();
     if (taskIds.length > 0) {
-      await authAPI.claimHistory(taskIds);
+      await authAPI.claimHistory(taskIds, getGuestId());
     }
     const u = await authAPI.getMe();
     setUser(u);
@@ -57,7 +57,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('access_token', access_token);
     const taskIds = getAnonymousTaskIds();
     if (taskIds.length > 0) {
-      await authAPI.claimHistory(taskIds);
+      await authAPI.claimHistory(taskIds, getGuestId());
     }
     const u = await authAPI.getMe();
     setUser(u);

@@ -214,6 +214,39 @@ def test_claim_history_only_claims_anonymous_tasks(client: TestClient) -> None:
     assert repository.load_task("already-owned", user_id=second_user["id"]) is not None
 
 
+def test_claim_history_can_claim_by_guest_id(client: TestClient) -> None:
+    register = client.post(
+        "/api/auth/register",
+        json={"email": "guest@example.com", "password": "secret123"},
+    )
+    token = register.json()["access_token"]
+    user = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+
+    repository = ResearchRepository()
+    repository.save_task(
+        ResearchTask(
+            id="guest-owned-task",
+            user_id=None,
+            guest_id="guestscope_a",
+            query="guest task",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+
+    response = client.post(
+        "/api/auth/claim-history",
+        json={"guest_id": "guestscope_a"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["claimed"] == 1
+    assert repository.load_task("guest-owned-task", user_id=user["id"]) is not None
+
+
 def test_create_access_token_requires_secret_key(monkeypatch) -> None:
     monkeypatch.delenv("SECRET_KEY", raising=False)
 

@@ -162,6 +162,7 @@ class ResearchConductor:
                     "link": source.link,
                     "snippet": source.snippet,
                     "source_type": source.source,
+                    "extracted_content": source.extracted_content,
                 }
                 for source in sources
             ],

@@ -38,7 +38,7 @@ echo "🔧 启动后端服务..."
 uv sync --extra dev
 
 # 后台启动后端
-uv run python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000 &
+uv run python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8003 &
 BACKEND_PID=$!
 echo "✅ 后端服务已启动 (PID: $BACKEND_PID)"
 
@@ -51,15 +51,15 @@ cd "$ROOT_DIR/frontend"
 npm install
 
 # 启动前端
-npm start &
+HOST=0.0.0.0 PORT=3003 npm start &
 FRONTEND_PID=$!
 echo "✅ 前端服务已启动 (PID: $FRONTEND_PID)"
 
 echo ""
 echo "🎉 开发环境启动完成！"
-echo "📱 前端地址: http://localhost:3000"
-echo "🔧 后端地址: http://localhost:8000"
-echo "📊 后端健康检查: http://localhost:8000/api/health"
+echo "📱 前端地址: http://localhost:3003"
+echo "🔧 后端地址: http://localhost:8003"
+echo "📊 后端健康检查: http://localhost:8003/api/health"
 echo ""
 echo "按 Ctrl+C 停止所有服务"
 

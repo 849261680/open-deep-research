@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.deps import get_current_user
+from backend.app.core.deps import resolve_guest_id
 from backend.app.core.security import create_access_token, hash_password, verify_password
 from backend.app.db.base import get_db
 from backend.app.models.user import User
@@ -35,7 +36,8 @@ class UserResponse(BaseModel):
 
 
 class ClaimAnonymousHistoryRequest(BaseModel):
-    task_ids: list[str]
+    task_ids: list[str] = Field(default_factory=list)
+    guest_id: str | None = None
 
 
 class ClaimAnonymousHistoryResponse(BaseModel):
@@ -82,12 +84,15 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
 
 @router.post("/claim-history", response_model=ClaimAnonymousHistoryResponse)
 async def claim_anonymous_history(
-    request: ClaimAnonymousHistoryRequest,
+    payload: ClaimAnonymousHistoryRequest,
+    http_request: Request,
     current_user: User = Depends(get_current_user),
 ) -> ClaimAnonymousHistoryResponse:
     repository = ResearchRepository()
+    guest_id = payload.guest_id or resolve_guest_id(http_request)
     claimed = repository.assign_anonymous_tasks_to_user(
-        request.task_ids,
+        payload.task_ids,
         current_user.id,
+        guest_id=guest_id,
     )
     return ClaimAnonymousHistoryResponse(claimed=claimed)

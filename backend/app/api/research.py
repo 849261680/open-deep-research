@@ -3,13 +3,14 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
 from ..core.deps import get_current_user
 from ..core.deps import get_optional_current_user
+from ..core.deps import resolve_guest_id
 from ..core.orchestrator import research_orchestrator
 from ..models.user import User
 
@@ -71,17 +72,21 @@ async def research_options():
 
 @router.post("/research", response_model=None)
 async def start_research(
+    http_request: Request,
     request: ResearchRequest,
     current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
     """开始研究任务"""
     user_id = current_user.id if current_user else None
+    guest_id = None if current_user else resolve_guest_id(http_request)
 
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
                 async for update in research_orchestrator.run(
-                    request.query, user_id=user_id
+                    request.query,
+                    user_id=user_id,
+                    guest_id=guest_id,
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
@@ -101,7 +106,9 @@ async def start_research(
         results = []
         final_payload: dict[str, object] | None = None
         async for update in research_orchestrator.run(
-            request.query, user_id=user_id
+            request.query,
+            user_id=user_id,
+            guest_id=guest_id,
         ):
             results.append(update)
             if update.get("type") == "report_complete" and isinstance(
@@ -121,6 +128,7 @@ async def start_research(
 
 @router.post("/research/resume", response_model=None)
 async def resume_research(
+    http_request: Request,
     request: ResumeResearchRequest,
     current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
@@ -129,12 +137,15 @@ async def resume_research(
         raise HTTPException(status_code=400, detail="任务ID不能为空")
 
     user_id = current_user.id if current_user else None
+    guest_id = None if current_user else resolve_guest_id(http_request)
 
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
                 async for update in research_orchestrator.resume_task(
-                    request.task_id, user_id=user_id
+                    request.task_id,
+                    user_id=user_id,
+                    guest_id=guest_id,
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
@@ -155,7 +166,9 @@ async def resume_research(
         results = []
         final_payload: dict[str, object] | None = None
         async for update in research_orchestrator.resume_task(
-            request.task_id, user_id=user_id
+            request.task_id,
+            user_id=user_id,
+            guest_id=guest_id,
         ):
             results.append(update)
             if update.get("type") in {"report_complete", "error"} and isinstance(
@@ -175,6 +188,7 @@ async def resume_research(
 
 @router.post("/research/stop")
 async def stop_research(
+    http_request: Request,
     request: StopResearchRequest,
     current_user: User | None = Depends(get_optional_current_user),
 ):
@@ -185,6 +199,7 @@ async def stop_research(
     task = research_orchestrator.stop_task(
         request.task_id,
         user_id=current_user.id if current_user else None,
+        guest_id=None if current_user else resolve_guest_id(http_request),
     )
     if task is None:
         raise HTTPException(status_code=404, detail="研究任务不存在")
@@ -198,13 +213,16 @@ async def stop_research(
 
 @router.get("/research/status")
 async def get_research_status(
+    http_request: Request,
     current_user: User | None = Depends(get_optional_current_user),
 ):
     """获取研究状态"""
+    guest_id = None if current_user else resolve_guest_id(http_request)
     return {
         "status": "ready",
         "steps": research_orchestrator.get_history(
-            user_id=current_user.id if current_user else None
+            user_id=current_user.id if current_user else None,
+            guest_id=guest_id,
         ),
         "message": "研究代理已准备就绪",
     }
@@ -212,11 +230,13 @@ async def get_research_status(
 
 @router.get("/research/history")
 async def get_research_history(
+    http_request: Request,
     current_user: User | None = Depends(get_optional_current_user),
 ):
     """获取研究历史"""
     history = research_orchestrator.get_history(
-        user_id=current_user.id if current_user else None
+        user_id=current_user.id if current_user else None,
+        guest_id=None if current_user else resolve_guest_id(http_request),
     )
     return {
         "history": history,
@@ -226,6 +246,7 @@ async def get_research_history(
 
 @router.get("/research/{task_id}")
 async def get_research_task(
+    http_request: Request,
     task_id: str,
     current_user: User | None = Depends(get_optional_current_user),
 ):
@@ -233,6 +254,7 @@ async def get_research_task(
     task = research_orchestrator.get_task(
         task_id,
         user_id=current_user.id if current_user else None,
+        guest_id=None if current_user else resolve_guest_id(http_request),
     )
     if task is None:
         raise HTTPException(status_code=404, detail="研究任务不存在")

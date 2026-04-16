@@ -1,12 +1,32 @@
 import axios from 'axios';
 import errorHandler from './errorHandler';
 
+const GUEST_ID_STORAGE_KEY = 'research-guest-id';
+const STREAM_INACTIVITY_TIMEOUT_MS = 600000;
+
 // API基础配置 - 优先使用生产环境配置，然后是本地配置
 const API_BASE_URL = process.env.REACT_APP_API_URL ||
-                    (window.location.hostname === 'localhost' ? 'http://localhost:8000' :
+                    (window.location.hostname === 'localhost' ? 'http://localhost:8003' :
                      window.location.origin.includes('railway.app') ?
                      `${window.location.protocol}//${window.location.hostname}` :
-                     'http://localhost:8000');
+                     'http://localhost:8003');
+
+export const getGuestId = () => {
+  const existingGuestId = localStorage.getItem(GUEST_ID_STORAGE_KEY);
+  if (existingGuestId) {
+    return existingGuestId;
+  }
+
+  const generatedGuestId = window.crypto?.randomUUID?.()
+    || `guest-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  localStorage.setItem(GUEST_ID_STORAGE_KEY, generatedGuestId);
+  return generatedGuestId;
+};
+
+const buildGuestHeaders = () => {
+  const guestId = getGuestId();
+  return guestId ? { 'X-Guest-Id': guestId } : {};
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -33,6 +53,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    config.headers['X-Guest-Id'] = getGuestId();
     return config;
   },
   (error) => Promise.reject(error)
@@ -44,10 +65,19 @@ export const researchAPI = {
   streamRequest: async (url, payload, onUpdate, options = {}) => {
     const controller = new AbortController();
     let timedOut = false;
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 600000);
+    let timeoutId = null;
+
+    const resetTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, STREAM_INACTIVITY_TIMEOUT_MS);
+    };
+
+    resetTimeout();
 
     const handleExternalAbort = () => controller.abort();
     if (options.signal) {
@@ -68,15 +98,17 @@ export const researchAPI = {
           'Content-Type': 'application/json',
           'Connection': 'keep-alive',
           ...authHeaders,
+          ...buildGuestHeaders(),
         },
         body: JSON.stringify(payload),
         signal: controller.signal
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      if (!response.body) {
+        throw new Error('流式响应不可用');
       }
 
       const reader = response.body.getReader();
@@ -88,6 +120,7 @@ export const researchAPI = {
         const { done, value } = await reader.read();
 
         if (done) break;
+        resetTimeout();
 
         buffer += decoder.decode(value, { stream: true });
 
@@ -119,7 +152,9 @@ export const researchAPI = {
         }
       }
     } catch (error) {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       if (error.name === 'AbortError') {
         throw new Error(timedOut ? '请求超时，请重试' : '研究已停止');
@@ -131,7 +166,9 @@ export const researchAPI = {
         throw error;
       }
     } finally {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (options.signal) {
         options.signal.removeEventListener('abort', handleExternalAbort);
       }
@@ -218,8 +255,11 @@ export const authAPI = {
     return response.data;
   },
 
-  claimHistory: async (taskIds) => {
-    const response = await api.post('/api/auth/claim-history', { task_ids: taskIds });
+  claimHistory: async (taskIds = [], guestId = getGuestId()) => {
+    const response = await api.post('/api/auth/claim-history', {
+      task_ids: taskIds,
+      guest_id: guestId,
+    });
     return response.data;
   },
 };

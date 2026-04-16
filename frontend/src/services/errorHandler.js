@@ -17,8 +17,11 @@ const errorHandler = {
   handleApiError: (error) => {
     if (error.response) {
       // 服务器响应错误
+      const message = error.response.data?.detail
+        || error.response.data?.message
+        || '服务器错误';
       return new ApiError(
-        error.response.data?.message || '服务器错误',
+        message,
         error.response.status,
         error.response.data
       );
@@ -45,14 +48,14 @@ const errorHandler = {
   },
 
   // 日志记录
-    logError: (error) => {
+  logError: (error) => {
       logger.error({
         message: error.message,
         statusCode: error.statusCode,
         stack: error.stack,
         details: error.details,
       });
-    },
+  },
 };
 
 export default errorHandler;

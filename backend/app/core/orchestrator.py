@@ -19,9 +19,17 @@ class ResearchOrchestrator:
         self._active_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def run(
-        self, query: str, user_id: int | None = None
+        self,
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
-        task = ResearchTask(id=str(uuid4()), user_id=user_id, query=query)
+        task = ResearchTask(
+            id=str(uuid4()),
+            user_id=user_id,
+            guest_id=None if user_id is not None else guest_id,
+            query=query,
+        )
         task.status = ResearchTaskStatus.PLANNING
         task.touch()
         self.repository.save_task(task)
@@ -32,6 +40,7 @@ class ResearchOrchestrator:
                 "id": task.id,
                 "task_id": task.id,
                 "user_id": task.user_id,
+                "guest_id": task.guest_id,
                 "query": task.query,
                 "status": task.status.value,
                 "timestamp": task.updated_at,
@@ -101,16 +110,32 @@ class ResearchOrchestrator:
             if self._active_tasks.get(task.id) is runner:
                 self._active_tasks.pop(task.id, None)
 
-    def get_history(self, user_id: int | None = None) -> list[dict[str, object]]:
-        return self.repository.load_tasks(user_id=user_id)
+    def get_history(
+        self,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self.repository.load_tasks(user_id=user_id, guest_id=guest_id)
 
-    def get_task(self, task_id: str, user_id: int | None = None) -> dict[str, object] | None:
-        return self.repository.load_task_payload(task_id, user_id=user_id)
+    def get_task(
+        self,
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> dict[str, object] | None:
+        return self.repository.load_task_payload(
+            task_id,
+            user_id=user_id,
+            guest_id=guest_id,
+        )
 
     async def resume_task(
-        self, task_id: str, user_id: int | None = None
+        self,
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
-        task = self.repository.load_task(task_id, user_id=user_id)
+        task = self.repository.load_task(task_id, user_id=user_id, guest_id=guest_id)
         if task is None:
             yield self._event("error", f"任务不存在: {task_id}", None)
             return
@@ -127,8 +152,14 @@ class ResearchOrchestrator:
         async for update in self.run_task(task):
             yield update
 
-    def clear(self, user_id: int | None = None) -> int:
+    def clear(
+        self,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+    ) -> int:
         if user_id is None:
+            if guest_id is not None:
+                return self.repository.clear(guest_id=guest_id)
             for task in self._active_tasks.values():
                 task.cancel()
             self._active_tasks.clear()
@@ -148,9 +179,12 @@ class ResearchOrchestrator:
         return self.repository.clear(user_id=user_id)
 
     def stop_task(
-        self, task_id: str, user_id: int | None = None
+        self,
+        task_id: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
     ) -> dict[str, object] | None:
-        task = self.repository.load_task(task_id, user_id=user_id)
+        task = self.repository.load_task(task_id, user_id=user_id, guest_id=guest_id)
         if task is None:
             return None
 

@@ -19,7 +19,8 @@ app = FastAPI(title="Deep Research Agent", version="1.0.0", lifespan=lifespan)
 
 # 获取允许的源
 allowed_origins = [
-    "http://localhost:3000",  # 本地开发
+    "http://localhost:3000",  # CRA 默认端口
+    "http://localhost:3003",  # 当前项目本地开发端口
     "http://localhost:3001",  # 备用端口
     "https://rsgpt.vercel.app",  # Vercel生产域名
 ]
@@ -63,5 +64,5 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8003))
     uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104

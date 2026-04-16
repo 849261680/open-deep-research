@@ -1,6 +1,7 @@
+import re
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from backend.app.models.user import User
 
 bearer_scheme = HTTPBearer()
 optional_bearer_scheme = HTTPBearer(auto_error=False)
+_GUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
 
 async def get_current_user(
@@ -51,3 +53,12 @@ async def get_optional_current_user(
 
     result = await db.execute(select(User).where(User.id == int(user_id)))
     return result.scalar_one_or_none()
+
+
+def resolve_guest_id(request: Request) -> str | None:
+    raw_guest_id = request.headers.get("X-Guest-Id", "").strip()
+    if not raw_guest_id:
+        return None
+    if not _GUEST_ID_RE.fullmatch(raw_guest_id):
+        return None
+    return raw_guest_id

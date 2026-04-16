@@ -40,7 +40,7 @@ export default function AuthPage({ onClose = null }) {
         onClose();
       }
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = err?.details?.detail || err?.message;
       setError(detail || (mode === 'login' ? '登录失败，请检查邮箱和密码' : '注册失败，请重试'));
     } finally {
       setLoading(false);

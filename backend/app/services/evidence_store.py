@@ -28,14 +28,19 @@ class EvidenceStore:
         evidence_ids: list[str] = []
         extraction_targets = [
             str(item.get("link", ""))
-            for item in items[:2]
-            if isinstance(item, dict) and item.get("link")
-        ]
+            for item in items
+            if (
+                isinstance(item, dict)
+                and item.get("link")
+                and not str(item.get("extracted_content", "")).strip()
+            )
+        ][:2]
         extracted_map: dict[str, str] = {}
         if extraction_targets:
             extracted_map = await self._extract_many(extraction_targets)
 
         for item in items:
+            extracted_content = str(item.get("extracted_content", "")).strip()
             evidence_id = str(uuid4())
             evidence = EvidenceItem(
                 id=evidence_id,
@@ -45,7 +50,10 @@ class EvidenceStore:
                 title=str(item.get("title", "")),
                 link=str(item.get("link", "")),
                 snippet=str(item.get("snippet", "")),
-                extracted_content=extracted_map.get(str(item.get("link", "")), ""),
+                extracted_content=(
+                    extracted_content
+                    or extracted_map.get(str(item.get("link", "")), "")
+                ),
             )
             self._evidence[evidence_id] = evidence
             evidence_ids.append(evidence_id)
