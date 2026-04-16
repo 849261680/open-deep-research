@@ -86,6 +86,7 @@ export const HistoryProvider = ({ children }) => {
                   status: section.status,
                   analysis: section.analysis,
                   citations: section.citations || [],
+                  search_sources: section.search_sources || [],
                   verification: section.verification || {},
                   compressed_evidence: section.compressed_evidence || '',
                 })),

@@ -291,6 +291,14 @@ function AppContent() {
         return;
       }
       if (activeRequestControllerRef.current && activeResearchRef.current?.id === currentResearch.id) {
+        // When switching back from a historical report to the still-active task,
+        // restore the streaming view instead of bailing out with stale report UI.
+        setError(null);
+        setResearchData(null);
+        setIsResearching(true);
+        if (isMobile) {
+          setSidebarOpen(false);
+        }
         return;
       }
 
@@ -360,6 +368,7 @@ function AppContent() {
                 status: section.status,
                 analysis: section.analysis,
                 citations: section.citations || [],
+                search_sources: section.search_sources || [],
                 verification: section.verification || {},
                 compressed_evidence: section.compressed_evidence || '',
               })),

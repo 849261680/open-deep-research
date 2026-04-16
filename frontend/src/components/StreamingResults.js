@@ -44,6 +44,7 @@ const StreamingResults = ({ updates }) => {
 
   // 判断是否完成
   const isComplete = updates.length > 0 && updates[updates.length - 1]?.type === 'report_complete';
+  const latestUpdate = updates[updates.length - 1];
 
   const getUpdateIcon = (type) => {
     switch (type) {
@@ -119,6 +120,33 @@ const StreamingResults = ({ updates }) => {
       minute: '2-digit',
       second: '2-digit'
     });
+  };
+
+  const getStageText = (type) => {
+    switch (type) {
+      case 'planning':
+      case 'planning_step':
+      case 'plan':
+        return '规划研究路径中...';
+      case 'step_start':
+      case 'step_retry':
+      case 'search_progress':
+      case 'search_result':
+        return '检索信息中...';
+      case 'analysis_progress':
+      case 'step_complete':
+        return '分析整理中...';
+      case 'report_generating':
+        return '生成报告中...';
+      case 'report_complete':
+        return '报告已生成';
+      case 'error':
+        return '研究过程中出现问题';
+      case 'stopped':
+        return '研究已手动停止';
+      default:
+        return '准备开始研究...';
+    }
   };
 
   const renderUpdateData = (update) => {
@@ -248,17 +276,22 @@ const StreamingResults = ({ updates }) => {
     <div className="border border-border-light rounded-lg overflow-hidden bg-background-primary">
       {/* 头部 */}
       <div className="px-md py-sm border-b border-border-light bg-background-secondary">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {!isComplete && (
-              <Loader2 className="w-4 h-4 text-accent animate-spin" />
-            )}
-            {isComplete && (
-              <CheckCircle className="w-4 h-4 text-success" />
-            )}
-            <h3 className="text-base font-semibold text-text-primary">
-              {isComplete ? '研究完成' : '实时研究进展'}
-            </h3>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              {!isComplete && (
+                <Loader2 className="w-4 h-4 text-accent animate-spin" />
+              )}
+              {isComplete && (
+                <CheckCircle className="w-4 h-4 text-success" />
+              )}
+              <h3 className="text-base font-semibold text-text-primary">
+                {isComplete ? '研究完成' : '实时研究进展'}
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-text-secondary">
+              {getStageText(latestUpdate?.type)}
+            </p>
           </div>
           <span className="text-xs text-text-tertiary">
             {updates.length} 个更新
@@ -298,7 +331,7 @@ const StreamingResults = ({ updates }) => {
                     <div className="flex items-center gap-1 text-text-tertiary flex-shrink-0">
                       <Clock className="w-3 h-3" />
                       <span className="text-xs">
-                        {formatTime(Date.now())}
+                        {formatTime(update.timestamp || update.data?.timestamp || Date.now())}
                       </span>
                     </div>
                   </div>

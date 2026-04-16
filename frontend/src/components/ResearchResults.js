@@ -4,6 +4,94 @@ import { FileText, CheckCircle, ShieldCheck, ShieldAlert, Link2, FileSearch } fr
 import ResultHeader from './ResultHeader';
 import CollapsibleSection from './CollapsibleSection';
 
+const MAX_META_ITEMS = 3;
+
+const safeTrim = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const extractDisplayDomain = (value) => {
+  const raw = safeTrim(value);
+  if (!raw) {
+    return '';
+  }
+
+  const candidates = raw.includes('://') ? [raw] : [`https://${raw}`, raw];
+  for (const candidate of candidates) {
+    try {
+      const parsed = new URL(candidate);
+      const host = parsed.hostname || parsed.host || '';
+      if (!host) {
+        continue;
+      }
+      return host.replace(/^www\./i, '').toLowerCase();
+    } catch (error) {
+      continue;
+    }
+  }
+
+  return '';
+};
+
+const getResultDomain = (result) => {
+  const references = [
+    ...(Array.isArray(result?.citations) ? result.citations : []),
+    ...(Array.isArray(result?.search_sources) ? result.search_sources : []),
+  ];
+
+  for (const item of references) {
+    const domain = extractDisplayDomain(item?.link || item?.url || item?.host);
+    if (domain) {
+      return domain;
+    }
+  }
+
+  return '';
+};
+
+const getResultMetaItems = (result) => {
+  const items = [];
+  const domain = getResultDomain(result);
+  if (domain) {
+    items.push({ key: 'domain', label: domain });
+  }
+
+  return items.slice(0, MAX_META_ITEMS);
+};
+
+const getCitationDomain = (citation) => extractDisplayDomain(citation?.link || citation?.url || citation?.host);
+
+const getCitationDomains = (citations) => {
+  const seen = new Set();
+  const items = [];
+
+  for (const citation of Array.isArray(citations) ? citations : []) {
+    const domain = getCitationDomain(citation);
+    if (!domain || seen.has(domain)) {
+      continue;
+    }
+    seen.add(domain);
+    items.push(domain);
+  }
+
+  return items;
+};
+
+const DomainBadge = ({ domain, compact = false }) => {
+  if (!domain) {
+    return null;
+  }
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-full border border-border-light bg-background-secondary text-text-secondary ${
+        compact ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs'
+      }`}
+      title={domain}
+    >
+      <span className="truncate">{domain}</span>
+    </span>
+  );
+};
+
 /**
  * ResearchResults - 极简研究结果展示
  *
@@ -124,9 +212,23 @@ const ResearchResults = ({ data }) => {
               </h3>
               <div className="space-y-sm">
                 {data.results && data.results.map((result, index) => (
+                  (() => {
+                    const metaItems = getResultMetaItems(result);
+                    const citationDomains = getCitationDomains(result.citations);
+
+                    return (
                   <CollapsibleSection
                     key={index}
                     title={result.title}
+                    headerMeta={
+                      metaItems.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {metaItems.map((item) => (
+                            <DomainBadge key={item.key} domain={item.label} compact />
+                          ))}
+                        </div>
+                      ) : null
+                    }
                     icon={<CheckCircle className="w-4 h-4" />}
                     badge={result.status === 'completed' ? '已完成' : '进行中'}
                     defaultOpen={false}
@@ -172,11 +274,14 @@ const ResearchResults = ({ data }) => {
 
                     {Array.isArray(result.citations) && result.citations.length > 0 && (
                       <div className="mt-md pt-md border-t border-border-light">
-                        <div className="mb-xs flex items-center gap-2">
+                        <div className="mb-xs flex flex-wrap items-center gap-2">
                           <Link2 className="h-4 w-4 text-text-secondary" />
                           <p className="text-xs font-medium text-text-secondary">
                             引用来源 ({result.citations.length})
                           </p>
+                          {citationDomains.slice(0, 3).map((domain) => (
+                            <DomainBadge key={domain} domain={domain} compact />
+                          ))}
                         </div>
                         <div className="space-y-xs">
                           {result.citations.slice(0, 5).map((citation, idx) => (
@@ -185,9 +290,16 @@ const ResearchResults = ({ data }) => {
                               href={citation.link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="block text-xs text-accent hover:text-accent-dark underline decoration-1 underline-offset-2 transition-colors duration-fast"
+                              className="flex min-w-0 items-center gap-2 rounded-md border border-border-light bg-background-secondary px-sm py-sm text-xs transition-colors duration-fast hover:border-accent/30"
                             >
-                              {citation.title || citation.link}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-accent hover:text-accent-dark underline decoration-1 underline-offset-2">
+                                  {citation.title || citation.link}
+                                </p>
+                              </div>
+                              <div className="max-w-[10rem] shrink-0">
+                                <DomainBadge domain={getCitationDomain(citation)} compact />
+                              </div>
                             </a>
                           ))}
                         </div>
@@ -233,6 +345,8 @@ const ResearchResults = ({ data }) => {
                       </div>
                     )}
                   </CollapsibleSection>
+                    );
+                  })()
                 ))}
               </div>
             </div>

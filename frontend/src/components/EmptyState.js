@@ -56,9 +56,9 @@ const EmptyState = ({ onExampleClick }) => {
               onExampleClick(query.trim());
             }
           }}
-          className="flex gap-3"
+          className="flex items-stretch gap-3"
         >
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-h-[48px]">
             <input
               type="text"
               value={query}
@@ -72,8 +72,8 @@ const EmptyState = ({ onExampleClick }) => {
                 }
               }}
               placeholder="输入你想研究的主题..."
-              className="w-full px-lg py-4 text-base border border-border-light rounded-lg
-                bg-background-primary text-text-primary placeholder-text-tertiary
+              className="h-full w-full px-lg py-3 text-base leading-6 border border-border-light rounded-lg
+                bg-background-primary text-text-primary placeholder:text-text-secondary
                 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent
                 transition-all duration-fast shadow-sm hover:shadow-md"
             />

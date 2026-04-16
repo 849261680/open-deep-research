@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
  */
 const CollapsibleSection = ({
   title,
+  headerMeta,
   children,
   defaultOpen = false,
   icon,
@@ -24,7 +25,7 @@ const CollapsibleSection = ({
         className="w-full flex items-center justify-between px-md py-sm bg-background-secondary hover:bg-background-tertiary transition-colors duration-fast text-left"
         aria-expanded={isOpen}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {/* 展开/折叠图标 */}
           <span className="text-text-secondary transition-transform duration-slow">
             {isOpen ? (
@@ -38,14 +39,22 @@ const CollapsibleSection = ({
           {icon && <span className="text-text-secondary">{icon}</span>}
 
           {/* 标题 */}
-          <span className="font-medium text-text-primary">{title}</span>
-
-          {/* 徽章 */}
-          {badge && (
-            <span className="ml-2 px-2 py-0.5 bg-background-tertiary text-text-secondary text-xs rounded-full">
-              {badge}
-            </span>
-          )}
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium text-text-primary">{title}</span>
+              {/* 徽章 */}
+              {badge && (
+                <span className="ml-2 shrink-0 rounded-full bg-background-tertiary px-2 py-0.5 text-xs text-text-secondary">
+                  {badge}
+                </span>
+              )}
+            </div>
+            {headerMeta ? (
+              <div className="mt-1 min-w-0 text-xs text-text-secondary">
+                {headerMeta}
+              </div>
+            ) : null}
+          </div>
         </div>
       </button>
 

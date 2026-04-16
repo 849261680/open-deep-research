@@ -62,7 +62,7 @@ code, pre {
 }
 
 .markdown-content p {
-  @apply mb-md text-text-secondary;
+  @apply mb-md text-text-primary;
   line-height: 1.6;
 }
 
