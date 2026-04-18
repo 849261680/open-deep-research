@@ -38,7 +38,7 @@ const EmptyState = ({ onExampleClick }) => {
             textAlign: 'center',
           }}
         >
-          <span className="hero-headline-line">深度研究，</span>
+          <span className="hero-headline-line hero-headline-line--top">深度研究，</span>
           <span className="hero-headline-line hero-headline-line--accent" style={{ color: '#9fe870' }}>无边界</span>
         </h1>
       </div>

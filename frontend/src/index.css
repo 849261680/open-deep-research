@@ -64,8 +64,7 @@ code, pre {
   align-items: center;
   gap: 0.06em;
   width: 100%;
-  --hero-optical-offset: -0.3em;
-  transform: translateX(0.3em);
+  --hero-top-offset: 0.4em;
 }
 
 .hero-headline-line {
@@ -73,8 +72,12 @@ code, pre {
   width: fit-content;
 }
 
+.hero-headline-line--top {
+  transform: translateX(var(--hero-top-offset));
+}
+
 .hero-headline-line--accent {
-  transform: translateX(var(--hero-optical-offset));
+  transform: translateX(0);
 }
 
 .display-section {
