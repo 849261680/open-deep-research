@@ -3,21 +3,13 @@ import { Search } from 'lucide-react';
 import { useHistory } from '../contexts/HistoryContext';
 import HistoryItem from './HistoryItem';
 
-/**
- * HistoryList - 历史记录列表组件
- *
- * 显示分组的历史记录
- * 支持搜索过滤
- */
 const HistoryList = ({ onResume }) => {
   const { history, currentResearch, searchHistory, groupedHistory } = useHistory();
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 获取要显示的历史记录
   const displayHistory = searchTerm ? searchHistory(searchTerm) : history;
   const grouped = groupedHistory();
 
-  // 组标题映射
   const groupTitles = {
     pinned: '已固定',
     today: '今天',
@@ -26,16 +18,17 @@ const HistoryList = ({ onResume }) => {
     older: '更早',
   };
 
-  // 渲染单个分组
   const renderGroup = (groupName, items) => {
     if (!items || items.length === 0) return null;
-
     return (
-      <div key={groupName} className="mb-lg">
-        <h3 className="text-xs font-medium text-text-tertiary px-md mb-sm uppercase tracking-wide">
+      <div key={groupName} className="mb-5">
+        <p
+          className="px-4 mb-2 uppercase tracking-widest text-text-tertiary"
+          style={{ fontSize: '10px', fontWeight: 600 }}
+        >
           {groupTitles[groupName]}
-        </h3>
-        <div className="space-y-1">
+        </p>
+        <div className="space-y-0.5">
           {items.map((research) => (
             <HistoryItem
               key={research.id}
@@ -51,31 +44,32 @@ const HistoryList = ({ onResume }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* 搜索框 */}
-      <div className="px-md mb-md">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+      {/* Search */}
+      <div className="px-4 mb-4">
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-full bg-background-tertiary border border-border-light"
+        >
+          <Search className="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
           <input
             type="text"
             placeholder="搜索历史..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-3 py-2 text-sm bg-background-tertiary border border-border-light rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all duration-fast"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none font-medium"
           />
         </div>
       </div>
 
-      {/* 历史记录列表 */}
-      <div className="flex-1 overflow-y-auto px-sm">
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-1">
         {displayHistory.length === 0 ? (
-          <div className="text-center py-xl px-md">
-            <p className="text-sm text-text-tertiary">
+          <div className="text-center py-10 px-4">
+            <p className="text-sm text-text-tertiary font-medium">
               {searchTerm ? '没有找到匹配的记录' : '还没有研究历史'}
             </p>
           </div>
         ) : searchTerm ? (
-          // 搜索结果显示为单个列表
-          <div className="space-y-1 mb-md">
+          <div className="space-y-0.5 mb-4">
             {displayHistory.map((research) => (
               <HistoryItem
                 key={research.id}
@@ -86,7 +80,6 @@ const HistoryList = ({ onResume }) => {
             ))}
           </div>
         ) : (
-          // 正常显示分组列表
           <>
             {renderGroup('pinned', grouped.pinned)}
             {renderGroup('today', grouped.today)}

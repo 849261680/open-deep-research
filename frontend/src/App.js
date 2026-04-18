@@ -117,9 +117,13 @@ function AppContent() {
     try {
       // 使用流式API
       await researchAPI.startResearchStream(query, (update) => {
-        setStreamingData(prev => [...prev, update]);
+        const normalizedUpdate = {
+          ...update,
+          timestamp: update.timestamp || new Date().toISOString(),
+        };
+        setStreamingData((prev) => [...prev, normalizedUpdate]);
 
-        const serverTaskId = update.data?.task_id || update.data?.id;
+        const serverTaskId = normalizedUpdate.data?.task_id || normalizedUpdate.data?.id;
         if (serverTaskId && serverTaskId !== research.id) {
           replaceResearchId(research.id, serverTaskId);
           research.id = serverTaskId;
@@ -128,19 +132,19 @@ function AppContent() {
         }
 
         // 如果研究完成，设置最终数据
-        if (update.type === 'report_complete') {
-          setResearchData(update.data);
+        if (normalizedUpdate.type === 'report_complete') {
+          setResearchData(normalizedUpdate.data);
           // 更新历史记录
           updateResearch(research.id, {
-            result: update.data,
+            result: normalizedUpdate.data,
             status: 'completed',
           });
           activeResearchRef.current = null;
-        } else if (update.type === 'error') {
-          setError(update.message);
+        } else if (normalizedUpdate.type === 'error') {
+          setError(normalizedUpdate.message);
           updateResearch(research.id, {
             status: 'failed',
-            error: update.message,
+            error: normalizedUpdate.message,
           });
           activeResearchRef.current = null;
         }
@@ -214,24 +218,28 @@ function AppContent() {
 
     try {
       await researchAPI.resumeResearchStream(research.id, (update) => {
-        setStreamingData(prev => [...prev, update]);
+        const normalizedUpdate = {
+          ...update,
+          timestamp: update.timestamp || new Date().toISOString(),
+        };
+        setStreamingData((prev) => [...prev, normalizedUpdate]);
 
-        if (update.type === 'report_complete') {
-          setResearchData(update.data);
+        if (normalizedUpdate.type === 'report_complete') {
+          setResearchData(normalizedUpdate.data);
           updateResearch(research.id, {
-            result: update.data,
+            result: normalizedUpdate.data,
             status: 'completed',
-            timestamp: update.data.timestamp || new Date().toISOString(),
+            timestamp: normalizedUpdate.data.timestamp || normalizedUpdate.timestamp,
           });
           activeResearchRef.current = null;
-        } else if (update.type === 'error') {
-          setError(update.message);
+        } else if (normalizedUpdate.type === 'error') {
+          setError(normalizedUpdate.message);
           updateResearch(research.id, {
             status: 'failed',
-            error: update.message,
+            error: normalizedUpdate.message,
           });
           activeResearchRef.current = null;
-        } else if (update.type === 'step_retry') {
+        } else if (normalizedUpdate.type === 'step_retry') {
           updateResearch(research.id, {
             status: 'in_progress',
           });
@@ -458,16 +466,14 @@ function AppContent() {
   const showEmptyState = !isResearching && !researchData && !currentResearch;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-background-primary">
-      {/* 顶部导航 */}
+    <div className="h-screen flex flex-col overflow-hidden bg-white">
       <Header
         onMenuClick={() => setSidebarOpen(!sidebarOpen)}
         onLoginClick={() => setAuthModalOpen(true)}
       />
 
-      {/* 主布局：侧边栏 + 主内容 */}
-      <div className="flex flex-1 overflow-hidden pt-12">
-        {/* 侧边栏 */}
+      {/* Main layout */}
+      <div className="flex flex-1 overflow-hidden pt-14">
         <Sidebar
           backendStatus={backendStatus}
           onNewResearch={handleNewResearch}
@@ -477,17 +483,14 @@ function AppContent() {
           onClose={() => setSidebarOpen(false)}
         />
 
-        {/* 主内容区域 */}
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-container mx-auto px-lg py-lg">
-            {/* 空状态 */}
             {showEmptyState && (
               <EmptyState onExampleClick={handleExampleClick} />
             )}
 
-            {/* 有内容时显示搜索框 */}
             {!showEmptyState && (
-              <div className="mb-xl">
+              <div className="mb-8">
                 <SearchForm
                   onSubmit={handleStartResearch}
                   onStop={handleStopResearch}
@@ -497,16 +500,21 @@ function AppContent() {
               </div>
             )}
 
-            {/* 错误提示 */}
             {error && !showEmptyState && (
-              <div className="mb-xl p-md bg-error-bg border border-error-light rounded-lg">
-                <p className="text-error text-sm">{error}</p>
+              <div
+                className="mb-8 p-4"
+                style={{
+                  background: '#FDECEA',
+                  border: '1px solid rgba(208,50,56,0.2)',
+                  borderRadius: '16px',
+                }}
+              >
+                <p className="text-sm font-medium" style={{ color: '#d03238' }}>{error}</p>
               </div>
             )}
 
-            {/* 研究中状态 */}
             {isResearching && (
-              <div className="mt-xl">
+              <div className="mt-8">
                 {streamingData.length > 0 ? (
                   <StreamingResults updates={streamingData} />
                 ) : (
@@ -515,9 +523,8 @@ function AppContent() {
               </div>
             )}
 
-            {/* 研究结果 */}
             {researchData && !isResearching && (
-              <div className="mt-xl">
+              <div className="mt-8">
                 <ResearchResults data={researchData} />
               </div>
             )}

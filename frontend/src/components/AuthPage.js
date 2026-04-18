@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function AuthPage({ onClose = null }) {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -12,16 +12,8 @@ export default function AuthPage({ onClose = null }) {
   const isModal = typeof onClose === 'function';
 
   useEffect(() => {
-    if (!isModal) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
+    if (!isModal) return undefined;
+    const handleKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isModal, onClose]);
@@ -31,14 +23,9 @@ export default function AuthPage({ onClose = null }) {
     setError('');
     setLoading(true);
     try {
-      if (mode === 'login') {
-        await login(email, password);
-      } else {
-        await register(email, password);
-      }
-      if (isModal) {
-        onClose();
-      }
+      if (mode === 'login') await login(email, password);
+      else await register(email, password);
+      if (isModal) onClose();
     } catch (err) {
       const detail = err?.details?.detail || err?.message;
       setError(detail || (mode === 'login' ? '登录失败，请检查邮箱和密码' : '注册失败，请重试'));
@@ -47,102 +34,129 @@ export default function AuthPage({ onClose = null }) {
     }
   };
 
+  const inputStyle = {
+    width: '100%',
+    padding: '12px 16px',
+    background: '#F5F8F2',
+    border: '1px solid #E2E5DE',
+    borderRadius: '12px',
+    fontSize: '15px',
+    fontWeight: 500,
+    color: '#0e0f0c',
+    outline: 'none',
+    transition: 'border-color 150ms ease',
+    fontFeatureSettings: '"calt"',
+  };
+
   const content = (
-    <div className="w-full max-w-sm">
+    <div className="w-full" style={{ maxWidth: '380px' }}>
       {isModal && (
-        <div className="flex justify-end mb-3">
+        <div className="flex justify-end mb-2">
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-background-primary rounded-md transition-colors"
-            aria-label="关闭登录窗口"
+            className="p-2 rounded-full hover:bg-background-secondary transition-colors duration-fast btn-scale"
+            aria-label="关闭"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 text-text-secondary" />
           </button>
         </div>
       )}
 
-        {/* Logo / 标题 */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-text-primary">Research GPT</h1>
-          <p className="text-text-secondary text-sm mt-1">智能深度研究助手</p>
+      {/* Brand */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full mb-4" style={{ background: '#9fe870' }}>
+          <svg width="24" height="24" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="5" stroke="#163300" strokeWidth="2" />
+            <path d="M5.5 8.5L7 10L10.5 6" stroke="#163300" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <h1 style={{ fontSize: '28px', fontWeight: 900, lineHeight: 0.9, color: '#0e0f0c', letterSpacing: 'normal' }}>
+          DeepResearch
+        </h1>
+        <p className="text-text-tertiary mt-2" style={{ fontSize: '14px', fontWeight: 400 }}>
+          智能深度研究助手
+        </p>
+      </div>
+
+      {/* Card */}
+      <div
+        className="bg-white p-6"
+        style={{ borderRadius: '30px', boxShadow: 'rgba(14,15,12,0.12) 0px 0px 0px 1px' }}
+      >
+        {/* Tab switcher */}
+        <div className="flex mb-6 p-1 rounded-full" style={{ background: '#F5F8F2' }}>
+          {['login', 'register'].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMode(m); setError(''); }}
+              className="flex-1 py-2 rounded-full transition-all duration-fast btn-scale"
+              style={{
+                fontSize: '14px',
+                fontWeight: 600,
+                background: mode === m ? '#FFFFFF' : 'transparent',
+                color: mode === m ? '#0e0f0c' : '#868685',
+                boxShadow: mode === m ? 'rgba(14,15,12,0.12) 0px 0px 0px 1px' : 'none',
+              }}
+            >
+              {m === 'login' ? '登录' : '注册'}
+            </button>
+          ))}
         </div>
 
-        {/* 卡片 */}
-        <div className="bg-background-secondary border border-border-primary rounded-xl p-6 shadow-lg">
-          {/* Tab 切换 */}
-          <div className="flex mb-6 bg-background-primary rounded-lg p-1">
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setError(''); }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                mode === 'login'
-                  ? 'bg-background-secondary text-text-primary shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              登录
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('register'); setError(''); }}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                mode === 'register'
-                  ? 'bg-background-secondary text-text-primary shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              注册
-            </button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-text-secondary mb-1.5">邮箱</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="you@example.com"
+              style={inputStyle}
+              onFocus={(e) => { e.target.style.borderColor = '#9fe870'; }}
+              onBlur={(e) => { e.target.style.borderColor = '#E2E5DE'; }}
+            />
           </div>
 
-          {/* 表单 */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">邮箱</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                className="w-full px-3 py-2 bg-background-primary border border-border-primary rounded-lg text-text-primary text-sm placeholder-text-tertiary focus:outline-none focus:border-accent-primary transition-colors"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-text-secondary mb-1.5">密码</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder={mode === 'register' ? '至少 6 位' : ''}
+              minLength={mode === 'register' ? 6 : undefined}
+              style={inputStyle}
+              onFocus={(e) => { e.target.style.borderColor = '#9fe870'; }}
+              onBlur={(e) => { e.target.style.borderColor = '#E2E5DE'; }}
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm text-text-secondary mb-1">密码</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder={mode === 'register' ? '至少 6 位' : ''}
-                minLength={mode === 'register' ? 6 : undefined}
-                className="w-full px-3 py-2 bg-background-primary border border-border-primary rounded-lg text-text-primary text-sm placeholder-text-tertiary focus:outline-none focus:border-accent-primary transition-colors"
-              />
-            </div>
+          {error && (
+            <p className="text-sm font-medium" style={{ color: '#d03238' }}>{error}</p>
+          )}
 
-            {error && (
-              <p className="text-error text-sm">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 bg-accent-primary hover:bg-accent-hover text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? '请稍候...' : mode === 'login' ? '登录' : '注册'}
-            </button>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 rounded-full font-semibold text-sm btn-scale transition-transform duration-fast disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
+            style={{ background: '#9fe870', color: '#163300', fontSize: '15px' }}
+          >
+            {loading ? '请稍候...' : mode === 'login' ? '登录' : '注册'}
+          </button>
+        </form>
       </div>
+    </div>
   );
 
   if (isModal) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: 'rgba(14,15,12,0.5)' }}
         onClick={onClose}
       >
         <div onClick={(e) => e.stopPropagation()}>
@@ -153,7 +167,7 @@ export default function AuthPage({ onClose = null }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background-primary px-4">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4">
       {content}
     </div>
   );
