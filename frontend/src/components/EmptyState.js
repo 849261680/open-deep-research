@@ -41,12 +41,6 @@ const EmptyState = ({ onExampleClick }) => {
           <span className="hero-headline-line">深度研究，</span>
           <span className="hero-headline-line hero-headline-line--accent" style={{ color: '#9fe870' }}>无边界</span>
         </h1>
-        <p
-          className="mt-6 text-text-secondary max-w-md mx-auto"
-          style={{ fontSize: '18px', fontWeight: 400, lineHeight: 1.6, letterSpacing: '0.18px' }}
-        >
-          输入任何问题，获得专业的深度研究报告
-        </p>
       </div>
 
       {/* Search bar */}
