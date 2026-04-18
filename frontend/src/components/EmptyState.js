@@ -28,18 +28,18 @@ const EmptyState = ({ onExampleClick }) => {
       {/* Headline — billboard-scale */}
       <div className="text-center mb-10 max-w-3xl">
         <h1
-          className="text-text-primary text-balance"
+          className="text-text-primary hero-headline"
           style={{
             fontSize: 'clamp(48px, 8vw, 96px)',
             fontWeight: 900,
             lineHeight: 0.9,
             letterSpacing: 'normal',
             fontFeatureSettings: '"calt"',
+            textAlign: 'center',
           }}
         >
-          深度研究，
-          <br />
-          <span style={{ color: '#9fe870' }}>无边界</span>
+          <span className="hero-headline-line">深度研究，</span>
+          <span className="hero-headline-line hero-headline-line--accent" style={{ color: '#9fe870' }}>无边界</span>
         </h1>
         <p
           className="mt-6 text-text-secondary max-w-md mx-auto"

@@ -58,6 +58,25 @@ code, pre {
   font-feature-settings: "calt";
 }
 
+.hero-headline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.06em;
+  width: 100%;
+  --hero-optical-offset: -0.3em;
+  transform: translateX(0.3em);
+}
+
+.hero-headline-line {
+  display: block;
+  width: fit-content;
+}
+
+.hero-headline-line--accent {
+  transform: translateX(var(--hero-optical-offset));
+}
+
 .display-section {
   font-size: 40px;
   font-weight: 900;
