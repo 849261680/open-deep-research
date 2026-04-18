@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle } from 'lucide-react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import SearchForm from './components/SearchForm';
@@ -502,14 +503,26 @@ function AppContent() {
 
             {error && !showEmptyState && (
               <div
-                className="mb-8 p-4"
+                className="mb-8"
                 style={{
-                  background: '#FDECEA',
-                  border: '1px solid rgba(208,50,56,0.2)',
-                  borderRadius: '16px',
+                  background: '#FFFFFF',
+                  border: '1px solid rgba(14,15,12,0.12)',
+                  borderRadius: '30px',
+                  boxShadow: 'rgba(14,15,12,0.12) 0px 0px 0px 1px',
+                  padding: '14px 18px',
                 }}
               >
-                <p className="text-sm font-medium" style={{ color: '#d03238' }}>{error}</p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="inline-flex items-center justify-center rounded-full flex-shrink-0"
+                    style={{ width: '32px', height: '32px', background: 'rgba(208,50,56,0.08)', color: '#d03238' }}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                  </span>
+                  <p style={{ color: '#0e0f0c', fontSize: '16px', fontWeight: 600, lineHeight: 1.4, margin: 0 }}>
+                    {error}
+                  </p>
+                </div>
               </div>
             )}
 

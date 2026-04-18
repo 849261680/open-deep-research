@@ -41,7 +41,7 @@ const HistoryItem = ({ research, isActive, onResume }) => {
       className="group relative px-4 py-3 rounded-xl cursor-pointer transition-colors duration-fast"
       style={{
         background: isActive ? '#e2f6d5' : 'transparent',
-        borderLeft: isActive ? '3px solid #9fe870' : '3px solid transparent',
+        borderLeft: isActive ? '3px solid #e2f6d5' : '3px solid transparent',
       }}
       onMouseEnter={(e) => {
         if (!isActive) e.currentTarget.style.background = '#F5F8F2';
