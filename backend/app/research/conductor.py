@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 from collections.abc import Awaitable
 from collections.abc import Callable
 
@@ -37,6 +38,13 @@ class ResearchConductor:
             {"query": self.researcher.query},
         )
         initial_results = await self.retriever.search(self.researcher.query)
+        await self._emit_search_result(
+            on_event,
+            step=0,
+            query=self.researcher.query,
+            sources=initial_results,
+            message="已完成初始搜索，正在归纳研究线索...",
+        )
         sub_queries = await self.query_planner.plan(
             query=self.researcher.query,
             initial_results=initial_results,
@@ -62,16 +70,31 @@ class ResearchConductor:
             async with semaphore:
                 await self._emit(
                     on_event,
+                    "step_start",
+                    f"开始处理子查询 {index}",
+                    {
+                        "step": index,
+                        "query": sub_query,
+                        "total": len(sub_queries),
+                        "title": sub_query,
+                        "description": "正在搜索相关信息源并提取可用证据。",
+                        "queries": [sub_query],
+                        "cost_summary": self.researcher.cost_tracker.summary(),
+                    },
+                )
+                await self._emit(
+                    on_event,
                     "search_progress",
                     f"正在研究：{sub_query}",
                     {
                         "step": index,
                         "query": sub_query,
                         "total": len(sub_queries),
+                        "queries": [sub_query],
                         "cost_summary": self.researcher.cost_tracker.summary(),
                     },
                 )
-                return await self._process_sub_query(index, sub_query)
+                return await self._process_sub_query(index, sub_query, on_event)
 
         tasks = [
             asyncio.create_task(run_sub_query(index, sub_query))
@@ -114,12 +137,35 @@ class ResearchConductor:
         return contexts
 
     async def _process_sub_query(
-        self, step: int, sub_query: str
+        self,
+        step: int,
+        sub_query: str,
+        on_event: ResearchEventCallback | None = None,
     ) -> SubQueryContext:
         search_results = await self.retriever.search(sub_query)
+        await self._emit_search_result(
+            on_event,
+            step=step,
+            query=sub_query,
+            sources=search_results,
+        )
         scraped_sources = await self.scraper.scrape(
             search_results,
             self.researcher.visited_urls,
+        )
+        await self._emit(
+            on_event,
+            "analysis_progress",
+            f"已阅读相关资料，正在整理：{sub_query}",
+            {
+                "step": step,
+                "query": sub_query,
+                "title": sub_query,
+                "queries": [sub_query],
+                "sources": self._serialize_sources(scraped_sources),
+                "read_count": len(scraped_sources),
+                "domains": self._extract_domains(scraped_sources),
+            },
         )
         evidence_ids = await self._store_evidence(step, sub_query, scraped_sources)
         evidence = self.researcher.evidence_store.get_many(evidence_ids)
@@ -181,3 +227,62 @@ class ResearchConductor:
     ) -> None:
         if on_event is not None:
             await on_event({"type": event_type, "message": message, "data": data})
+
+    async def _emit_search_result(
+        self,
+        on_event: ResearchEventCallback | None,
+        *,
+        step: int,
+        query: str,
+        sources: list[object],
+        message: str | None = None,
+    ) -> None:
+        await self._emit(
+            on_event,
+            "search_result",
+            message or f"搜索完成，已获取候选信息源：{query}",
+            {
+                "step": step,
+                "query": query,
+                "queries": [query],
+                "sources": self._serialize_sources(sources),
+                "domains": self._extract_domains(sources),
+            },
+        )
+
+    def _serialize_sources(self, sources: list[object]) -> list[dict[str, str]]:
+        serialized: list[dict[str, str]] = []
+        for source in sources:
+            title = str(getattr(source, "title", "")).strip()
+            link = str(getattr(source, "link", "")).strip()
+            source_type = str(getattr(source, "source", "")).strip()
+            query = str(getattr(source, "query", "")).strip()
+            if not title and not link:
+                continue
+            serialized.append(
+                {
+                    "title": title,
+                    "link": link,
+                    "source": source_type,
+                    "query": query,
+                    "domain": self._extract_domain(link),
+                }
+            )
+        return serialized
+
+    def _extract_domains(self, sources: list[object]) -> list[str]:
+        domains: list[str] = []
+        seen: set[str] = set()
+        for source in sources:
+            domain = self._extract_domain(str(getattr(source, "link", "")).strip())
+            if not domain or domain in seen:
+                continue
+            seen.add(domain)
+            domains.append(domain)
+        return domains
+
+    def _extract_domain(self, link: str) -> str:
+        if not link:
+            return ""
+        hostname = urlparse(link).hostname or ""
+        return hostname.removeprefix("www.")

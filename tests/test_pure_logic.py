@@ -113,7 +113,12 @@ class TestResearchConductor:
 
         import asyncio
 
-        contexts = asyncio.run(conductor.conduct_research())
+        events = []
+
+        async def collect_event(event):  # noqa: ANN001
+            events.append(event)
+
+        contexts = asyncio.run(conductor.conduct_research(on_event=collect_event))
 
         assert len(contexts) == 2
         sub_query_context = contexts[0]
@@ -121,6 +126,11 @@ class TestResearchConductor:
         assert sub_query_context.citations[0].title == "DeepSeek Case Study"
         assert "DeepSeek Case Study" in sub_query_context.compressed_evidence
         assert sub_query_context.verification["passed"] is True
+        event_types = [event["type"] for event in events]
+        assert "search_result" in event_types
+        assert "step_start" in event_types
+        assert "analysis_progress" in event_types
+        assert "step_complete" in event_types
 
         with sqlite3.connect(repository.db_path) as conn:
             evidence_count = conn.execute(
