@@ -54,7 +54,7 @@ const SearchForm = ({
           <button
             type="submit"
             disabled={!query.trim() || isLoading || disabled}
-            className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-accent-dark bg-accent rounded-full btn-scale transition-transform duration-fast disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
+            className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-accent-dark bg-accent rounded-full btn-scale transition-transform duration-fast disabled:opacity-100 disabled:cursor-not-allowed disabled:transform-none"
           >
             {isLoading ? (
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

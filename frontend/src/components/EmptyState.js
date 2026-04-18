@@ -72,7 +72,7 @@ const EmptyState = ({ onExampleClick }) => {
             <button
               type="submit"
               disabled={!query.trim()}
-              className="flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-accent-dark bg-accent rounded-full btn-scale transition-transform duration-fast disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
+              className="flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-accent-dark bg-accent rounded-full btn-scale transition-transform duration-fast disabled:opacity-100 disabled:cursor-not-allowed disabled:transform-none"
             >
               <Zap className="w-4 h-4" />
               开始研究
