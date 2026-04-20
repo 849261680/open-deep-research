@@ -171,8 +171,9 @@ cp frontend/.env.example frontend/.env
 ### Railway（后端）
 
 1. 连接 GitHub 仓库到 Railway
-2. 设置根目录为 `backend`
-3. 配置环境变量：
+2. 保持根目录为仓库根目录（不要设置为 `backend`）
+3. 使用仓库根目录下的 `Dockerfile` / `pyproject.toml` / `uv.lock` 进行构建；当前后端入口依赖模块路径 `backend.app.main:app`，如果把根目录切到 `backend`，会导致 `ModuleNotFoundError: No module named 'backend'`
+4. 配置环境变量：
    ```
    DEEPSEEK_API_KEY=your_key
    DEEPSEEK_MODEL=deepseek-chat
@@ -182,7 +183,7 @@ cp frontend/.env.example frontend/.env
    TAVILY_API_KEY=your_key
    FRONTEND_URL=https://your-vercel-domain.vercel.app
    ```
-4. Railway 会自动使用 uv 安装依赖并启动服务
+5. Railway 会自动使用仓库根目录配置构建并启动服务
 
 ### Vercel（前端）
 
