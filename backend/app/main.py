@@ -6,8 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.auth import router as auth_router
+from .api.observability import router as observability_router
 from .api.research import router as research_router
+from .core.observability import configure_logging
+from .core.observability import configure_tracing
+from .core.observability import instrument_app
 from .db.base import init_db
+
+configure_logging()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -16,6 +22,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Deep Research Agent", version="1.0.0", lifespan=lifespan)
+instrument_app(app)
+configure_tracing(app)
 
 # 获取允许的源
 allowed_origins = [
@@ -48,6 +56,7 @@ app.add_middleware(
 
 # 路由
 app.include_router(auth_router, prefix="/api")
+app.include_router(observability_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 
 

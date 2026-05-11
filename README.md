@@ -104,6 +104,66 @@ chmod +x scripts/migrate-to-uv.sh
 
 打开浏览器访问：`http://localhost:3003`
 
+## 📡 本地可观测性
+
+本项目提供一套本地可观测性栈，用于收集后端日志、Prometheus 指标和 OpenTelemetry 追踪，并给智能体提供 LogQL/PromQL 查询入口。
+
+### 启动带观测性的开发环境
+
+```bash
+./scripts/dev-observability.sh
+```
+
+启动后可访问：
+
+- 应用前端：`http://localhost:3003`
+- 后端 API：`http://localhost:8003`
+- Grafana：`http://localhost:3004`
+- Prometheus：`http://localhost:9091`
+- Loki：`http://localhost:3100`
+- Tempo：`http://localhost:3200`
+
+日志会写入：
+
+```bash
+logs/backend.log
+logs/frontend.log
+```
+
+### 智能体查询入口
+
+后端暴露两个本地查询接口：
+
+```bash
+POST /api/observability/promql
+POST /api/observability/logql
+```
+
+示例：
+
+```bash
+curl -s http://localhost:8003/api/observability/promql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"open_deepresearch_http_requests_total"}'
+
+curl -s http://localhost:8003/api/observability/logql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{service=\"open-deepresearch-backend\"}"}'
+```
+
+也可以用脚本查询：
+
+```bash
+uv run python scripts/query_observability.py promql 'open_deepresearch_http_requests_total'
+uv run python scripts/query_observability.py logql '{service="open-deepresearch-backend"}'
+```
+
+后端指标端点：
+
+```bash
+curl -s http://localhost:8003/metrics
+```
+
 ## 🔧 开发工具
 
 ### 代码质量检查
