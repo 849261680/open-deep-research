@@ -84,8 +84,8 @@ npm start &
 FRONTEND_PID=$!
 
 echo "✅ 开发环境启动完成"
-echo "   - 后端: http://localhost:8000"
-echo "   - 前端: http://localhost:3000"
+echo "   - 后端: http://localhost:8003"
+echo "   - 前端: http://localhost:3003"
 echo ""
 echo "按 Ctrl+C 停止所有服务"
 

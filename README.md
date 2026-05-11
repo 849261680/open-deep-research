@@ -153,6 +153,14 @@ cp frontend/.env.example frontend/.env
 
 编辑 `.env` 文件，填入你的 API 密钥：
 
+本地开发默认端口与启动脚本保持一致：
+
+```bash
+PORT=8003
+FRONTEND_URL=http://localhost:3003
+REACT_APP_API_URL=http://localhost:8003
+```
+
 #### DeepSeek API
 
 1. 访问 [DeepSeek 平台](https://platform.deepseek.com/)
@@ -181,9 +189,11 @@ cp frontend/.env.example frontend/.env
    DEEPSEEK_MAX_OUTPUT_TOKENS=4000
    DEEPSEEK_MAX_PROMPT_CHARS=24000
    TAVILY_API_KEY=your_key
+   # PORT 由 Railway 自动提供，不需要手动设置
    FRONTEND_URL=https://your-vercel-domain.vercel.app
    ```
-5. Railway 会自动使用仓库根目录配置构建并启动服务
+5. Railway 会自动提供生产端口；本地示例中的 `PORT=8003` 只用于开发环境
+6. Railway 会自动使用仓库根目录配置构建并启动服务
 
 ### Vercel（前端）
 
