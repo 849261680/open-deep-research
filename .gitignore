@@ -54,4 +54,7 @@ test_api.py
 # Local runtime data
 backend/data/
 
+# Local reference examples
+example/
+
 CLAUDE.md
