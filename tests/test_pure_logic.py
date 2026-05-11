@@ -24,7 +24,10 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.models.research_task import Citation
 from backend.app.models.research_task import ResearchSection
+from backend.app.research.agent import ResearchAgent
+from backend.app.research.config import ResearchConfig
 from backend.app.research.conductor import ResearchConductor
+from backend.app.research.retriever import ResearchRetriever
 from backend.app.research.writer import ResearchWriter
 from backend.app.research.source_curator import SourceCurator, _score_source
 from backend.app.research.models import ResearchSource
@@ -52,6 +55,44 @@ class TestEventHelper:
     def test_event_data_can_be_none(self):
         event = self.orch._event("done", "完成", None)
         assert event["data"] is None
+
+
+class TestResearchConfig:
+    def test_config_can_be_loaded_from_environment(self, monkeypatch):
+        monkeypatch.setenv("RESEARCH_MAX_SUB_QUERIES", "2")
+        monkeypatch.setenv("RESEARCH_MAX_CONCURRENCY", "1")
+        monkeypatch.setenv("RESEARCH_RETRIEVER", "duckduckgo")
+        monkeypatch.setenv("RESEARCH_REPORT_TYPE", "detailed_report")
+        monkeypatch.setenv("RESEARCH_TONE", "analytical")
+        monkeypatch.setenv("RESEARCH_SOURCE", "web")
+        monkeypatch.setenv("RESEARCH_QUERY_DOMAINS", "example.com, docs.example.com")
+        monkeypatch.setenv("RESEARCH_SOURCE_URLS", "https://example.com/a")
+
+        config = ResearchConfig.from_env()
+
+        assert config.max_sub_queries == 2
+        assert config.max_concurrency == 1
+        assert config.retriever == "duckduckgo"
+        assert config.report_type == "detailed_report"
+        assert config.tone == "analytical"
+        assert config.source == "web"
+        assert config.query_domains == ["example.com", "docs.example.com"]
+        assert config.source_urls == ["https://example.com/a"]
+
+    def test_agent_uses_environment_config_by_default(self, monkeypatch):
+        monkeypatch.setenv("RESEARCH_MAX_SUB_QUERIES", "2")
+        monkeypatch.setenv("RESEARCH_MAX_CONCURRENCY", "1")
+        monkeypatch.setenv("RESEARCH_RETRIEVER", "duckduckgo")
+        monkeypatch.setenv("RESEARCH_REPORT_TYPE", "detailed_report")
+        monkeypatch.setenv("RESEARCH_TONE", "analytical")
+
+        agent = ResearchAgent(query="DeepSeek 企业应用")
+
+        assert agent.max_sub_queries == 2
+        assert agent.max_concurrency == 1
+        assert agent.config.retriever == "duckduckgo"
+        assert agent.config.report_type == "detailed_report"
+        assert agent.config.tone == "analytical"
 
 
 class TestResearchConductor:
@@ -141,6 +182,37 @@ class TestResearchConductor:
 
 
 class TestResearchWriter:
+    def test_writer_includes_report_type_and_tone_in_prompt(self, monkeypatch):
+        captured_prompt = ""
+        writer = ResearchWriter(
+            config=ResearchConfig(
+                report_type="detailed_report",
+                tone="analytical",
+            )
+        )
+
+        async def fake_llm_call(self, prompt: str, **kwargs):  # noqa: ANN001, ARG001
+            nonlocal captured_prompt
+            captured_prompt = prompt
+            return "# report"
+
+        monkeypatch.setattr(writer.llm.__class__, "_acall", fake_llm_call)
+
+        import asyncio
+
+        report = asyncio.run(
+            writer.write_report(
+                query="DeepSeek",
+                sections=[],
+                context=[],
+                sources=[],
+            )
+        )
+
+        assert report == "# report"
+        assert "报告类型：detailed_report" in captured_prompt
+        assert "语气：analytical" in captured_prompt
+
     def test_format_context_prefers_sections_with_verification_and_evidence(self):
         writer = ResearchWriter()
         sections = [
@@ -254,6 +326,74 @@ class TestSearchTools:
 
         search_tools._sync_google_search.assert_called_once_with("DeepSeek", 10)
         assert result == [{"title": "A", "link": "https://a.com"}]
+
+
+class TestResearchRetriever:
+    def test_retriever_uses_selected_backend_and_filters_domains(self, monkeypatch):
+        retriever = ResearchRetriever(
+            config=ResearchConfig(
+                retriever="duckduckgo",
+                query_domains=["allowed.com"],
+            )
+        )
+
+        async def fake_duckduckgo_search(query: str, num_results: int = 10):  # noqa: ARG001
+            return [
+                {
+                    "title": "Allowed",
+                    "link": "https://allowed.com/article",
+                    "snippet": "allowed result",
+                    "source": "duckduckgo",
+                },
+                {
+                    "title": "Blocked",
+                    "link": "https://blocked.com/article",
+                    "snippet": "blocked result",
+                    "source": "duckduckgo",
+                },
+            ]
+
+        async def fail_comprehensive_search(query: str):  # noqa: ARG001
+            raise AssertionError("comprehensive search should not run")
+
+        monkeypatch.setattr(
+            "backend.app.research.retriever.search_tools.duckduckgo_search",
+            fake_duckduckgo_search,
+        )
+        monkeypatch.setattr(
+            "backend.app.research.retriever.search_tools.comprehensive_search",
+            fail_comprehensive_search,
+        )
+
+        import asyncio
+
+        results = asyncio.run(retriever.search("DeepSeek"))
+
+        assert [source.link for source in results] == ["https://allowed.com/article"]
+        assert results[0].source == "duckduckgo"
+
+    def test_retriever_uses_configured_source_urls_without_search(self, monkeypatch):
+        retriever = ResearchRetriever(
+            config=ResearchConfig(
+                source_urls=["https://example.com/a"],
+            )
+        )
+
+        async def fail_comprehensive_search(query: str):  # noqa: ARG001
+            raise AssertionError("search should not run when explicit sources fill limit")
+
+        monkeypatch.setattr(
+            "backend.app.research.retriever.search_tools.comprehensive_search",
+            fail_comprehensive_search,
+        )
+
+        import asyncio
+
+        results = asyncio.run(retriever.search("DeepSeek", max_results=1))
+
+        assert len(results) == 1
+        assert results[0].link == "https://example.com/a"
+        assert results[0].source == "configured_url"
 
 
 # ═══════════════════════════════════════════════════════════════════

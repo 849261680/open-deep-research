@@ -7,6 +7,7 @@ from datetime import timezone
 from ..llms.deepseek_llm import DeepSeekLLM
 from ..models.research_task import ResearchSection
 from ..services.deepseek_service import DeepSeekConfig
+from .config import ResearchConfig
 from .cost_tracker import CostTracker
 from .models import ResearchSource
 from .models import SubQueryContext
@@ -32,6 +33,10 @@ REPORT_PROMPT_TEMPLATE = """\
 
 ## 参考来源列表
 {sources_block}
+
+## 报告配置
+报告类型：{report_type}
+语气：{tone}
 
 ---
 
@@ -63,9 +68,14 @@ REPORT_PROMPT_TEMPLATE = """\
 class ResearchWriter:
     """Writes the final report from compressed research context."""
 
-    def __init__(self, cost_tracker: CostTracker | None = None) -> None:
+    def __init__(
+        self,
+        cost_tracker: CostTracker | None = None,
+        config: ResearchConfig | None = None,
+    ) -> None:
         self.llm = DeepSeekLLM()
         self.config = DeepSeekConfig.from_env()
+        self.research_config = config or ResearchConfig.from_env()
         self.cost_tracker = cost_tracker
 
     async def write_report(
@@ -85,6 +95,8 @@ class ResearchWriter:
             query=query,
             context_block=context_block,
             sources_block=sources_block,
+            report_type=self.research_config.report_type,
+            tone=self.research_config.tone,
         )
 
         try:

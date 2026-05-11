@@ -4,7 +4,6 @@ import {
   Search,
   FileText,
   CheckCircle,
-  Clock,
   AlertCircle,
   Zap,
 } from 'lucide-react';
@@ -63,11 +62,6 @@ const StreamingResults = ({ updates }) => {
         return { iconColor: '#868685', bg: '#F5F8F2', dot: '#868685' };
     }
   };
-
-  const formatTime = (timestamp) =>
-    new Date(timestamp).toLocaleTimeString('zh-CN', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
 
   const getUpdateTimestamp = (update) =>
     update?.timestamp || update?.data?.timestamp || Date.now();
@@ -374,10 +368,6 @@ const StreamingResults = ({ updates }) => {
                   <p className="mt-2 text-xs text-text-tertiary line-clamp-1 font-normal">最近完成: {currentStatus.lastCompleted}</p>
                 )}
               </div>
-              <div className="flex items-center gap-1 text-text-tertiary flex-shrink-0">
-                <Clock className="w-3 h-3" />
-                <span style={{ fontSize: '11px', fontWeight: 400 }}>{formatTime(currentStatus.timestamp)}</span>
-              </div>
             </div>
           </div>
         </div>
@@ -406,12 +396,6 @@ const StreamingResults = ({ updates }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm text-text-primary font-medium flex-1">{update.message}</p>
-                    <div className="flex items-center gap-1 text-text-tertiary flex-shrink-0">
-                      <Clock className="w-3 h-3" />
-                      <span style={{ fontSize: '11px', fontWeight: 400 }}>
-                        {formatTime(update.timestamp || update.data?.timestamp || Date.now())}
-                      </span>
-                    </div>
                   </div>
                   {renderUpdateData(update)}
                 </div>

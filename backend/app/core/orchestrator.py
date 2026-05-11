@@ -8,6 +8,7 @@ from uuid import uuid4
 from ..models.research_task import ResearchTask
 from ..models.research_task import ResearchTaskStatus
 from ..research.agent import ResearchAgent
+from ..research.config import ResearchConfig
 from ..services.research_repository import ResearchRepository
 
 
@@ -23,6 +24,7 @@ class ResearchOrchestrator:
         query: str,
         user_id: int | None = None,
         guest_id: str | None = None,
+        config: ResearchConfig | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         task = ResearchTask(
             id=str(uuid4()),
@@ -46,13 +48,17 @@ class ResearchOrchestrator:
                 "timestamp": task.updated_at,
             },
         )
-        async for update in self.run_task(task):
+        async for update in self.run_task(task, config=config):
             yield update
 
     async def run_task(
-        self, task: ResearchTask
+        self, task: ResearchTask, config: ResearchConfig | None = None
     ) -> AsyncGenerator[dict[str, object], None]:
-        research_agent = ResearchAgent(query=task.query, repository=self.repository)
+        research_agent = ResearchAgent(
+            query=task.query,
+            repository=self.repository,
+            config=config,
+        )
         update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         async def produce_updates() -> None:

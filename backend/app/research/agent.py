@@ -11,6 +11,7 @@ from ..models.research_task import utc_now
 from ..services.evidence_store import EvidenceStore
 from ..services.research_repository import ResearchRepository
 from .conductor import ResearchConductor
+from .config import ResearchConfig
 from .cost_tracker import CostTracker
 from .models import ResearchSource
 from .models import SubQueryContext
@@ -27,11 +28,17 @@ class ResearchAgent:
         repository: ResearchRepository | None = None,
         max_sub_queries: int = 5,
         max_concurrency: int = 3,
+        config: ResearchConfig | None = None,
     ) -> None:
+        resolved_config = config or self._config_from_defaults(
+            max_sub_queries=max_sub_queries,
+            max_concurrency=max_concurrency,
+        )
         self.query = query
         self.role = "专业、客观、重视来源证据的研究分析师"
-        self.max_sub_queries = max_sub_queries
-        self.max_concurrency = max_concurrency
+        self.config = resolved_config
+        self.max_sub_queries = resolved_config.max_sub_queries
+        self.max_concurrency = resolved_config.max_concurrency
         self.sub_queries: list[str] = []
         self.context: list[SubQueryContext] = []
         self.research_sources: list[ResearchSource] = []
@@ -41,7 +48,22 @@ class ResearchAgent:
         self.evidence_store = EvidenceStore()
         self.cost_tracker = CostTracker()
         self.conductor = ResearchConductor(self)
-        self.writer = ResearchWriter(self.cost_tracker)
+        self.writer = ResearchWriter(self.cost_tracker, config=resolved_config)
+
+    def _config_from_defaults(
+        self,
+        *,
+        max_sub_queries: int,
+        max_concurrency: int,
+    ) -> ResearchConfig:
+        """Resolve env defaults while honoring explicit constructor limits."""
+        config = ResearchConfig.from_env()
+        updates: dict[str, int] = {}
+        if max_sub_queries != 5:
+            updates["max_sub_queries"] = max_sub_queries
+        if max_concurrency != 3:
+            updates["max_concurrency"] = max_concurrency
+        return config.model_copy(update=updates) if updates else config
 
     async def run(self, task: ResearchTask) -> AsyncGenerator[dict[str, object], None]:
         event_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()

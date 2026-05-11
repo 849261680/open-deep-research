@@ -13,6 +13,7 @@ from ..core.deps import get_optional_current_user
 from ..core.deps import resolve_guest_id
 from ..core.orchestrator import research_orchestrator
 from ..models.user import User
+from ..research.config import ResearchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ router = APIRouter()
 class ResearchRequest(BaseModel):
     query: str
     stream: bool | None = True
+    config: ResearchConfig | None = None
 
     @field_validator("query")
     @classmethod
@@ -83,11 +85,8 @@ async def start_research(
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
-                async for update in research_orchestrator.run(
-                    request.query,
-                    user_id=user_id,
-                    guest_id=guest_id,
-                ):
+                run_kwargs = _run_kwargs(request, user_id, guest_id)
+                async for update in research_orchestrator.run(**run_kwargs):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
@@ -105,11 +104,8 @@ async def start_research(
     try:
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in research_orchestrator.run(
-            request.query,
-            user_id=user_id,
-            guest_id=guest_id,
-        ):
+        run_kwargs = _run_kwargs(request, user_id, guest_id)
+        async for update in research_orchestrator.run(**run_kwargs):
             results.append(update)
             if update.get("type") == "report_complete" and isinstance(
                 update.get("data"), dict
@@ -124,6 +120,22 @@ async def start_research(
     except Exception as e:
         logger.exception("研究任务执行失败（非流式）query=%r user_id=%s", request.query, user_id)
         raise HTTPException(status_code=500, detail="研究失败，请稍后重试") from e
+
+
+def _run_kwargs(
+    request: ResearchRequest,
+    user_id: int | None,
+    guest_id: str | None,
+) -> dict[str, object]:
+    """Build orchestrator arguments without changing old no-config calls."""
+    kwargs: dict[str, object] = {
+        "query": request.query,
+        "user_id": user_id,
+        "guest_id": guest_id,
+    }
+    if request.config is not None:
+        kwargs["config"] = request.config
+    return kwargs
 
 
 @router.post("/research/resume", response_model=None)

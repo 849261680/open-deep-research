@@ -23,7 +23,7 @@ class ResearchConductor:
     def __init__(self, researcher) -> None:  # noqa: ANN001
         self.researcher = researcher
         self.query_planner = QueryPlanner(researcher.cost_tracker)
-        self.retriever = ResearchRetriever()
+        self.retriever = ResearchRetriever(getattr(researcher, "config", None))
         self.scraper = ResearchScraper()
         self.context_manager = ResearchContextManager(researcher.cost_tracker)
         self.source_curator = SourceCurator()

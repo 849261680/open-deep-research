@@ -123,6 +123,72 @@ def test_non_stream_research_allows_anonymous_access(monkeypatch) -> None:
     assert payload["data"]["user_id"] is None
 
 
+def test_research_request_passes_config_to_orchestrator(
+    monkeypatch, client: TestClient
+) -> None:
+    captured_config = None
+
+    async def fake_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+        config=None,  # noqa: ANN001
+    ):
+        nonlocal captured_config
+        captured_config = config
+        yield {
+            "type": "report_complete",
+            "message": "done",
+            "data": {
+                "id": "task-config",
+                "user_id": user_id,
+                "guest_id": guest_id,
+                "query": query,
+                "status": "completed",
+                "plan": [],
+                "sections": [],
+                "results": [],
+                "report": "# configured",
+                "timestamp": "2026-01-01T00:00:00+00:00",
+            },
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.run",
+        fake_conduct_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": "configured query",
+            "stream": False,
+            "config": {
+                "max_sub_queries": 2,
+                "max_concurrency": 1,
+                "retriever": "duckduckgo",
+                "report_type": "detailed_report",
+                "tone": "analytical",
+                "source": "web",
+                "query_domains": ["example.com", "docs.example.com"],
+                "source_urls": ["https://example.com/a"],
+            },
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert captured_config is not None
+    assert captured_config.max_sub_queries == 2
+    assert captured_config.max_concurrency == 1
+    assert captured_config.retriever == "duckduckgo"
+    assert captured_config.report_type == "detailed_report"
+    assert captured_config.tone == "analytical"
+    assert captured_config.source == "web"
+    assert captured_config.query_domains == ["example.com", "docs.example.com"]
+    assert captured_config.source_urls == ["https://example.com/a"]
+
+
 def test_stream_research_emits_error_event_on_failure(
     monkeypatch, client: TestClient
 ) -> None:
