@@ -47,6 +47,7 @@ dist/
 
 # Test files
 test_api.py
+test_logic.db
 
 # Logs
 *.log
