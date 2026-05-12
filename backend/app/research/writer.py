@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from datetime import timezone
 
@@ -52,7 +53,7 @@ REPORT_PROMPT_TEMPLATE = """\
 5. **争议与不确定性**：明确列出信息不足、存在争议或互相矛盾的领域，用 [信息不足] 标注
 6. **趋势与展望**：基于证据的方向性判断（必须标注为"分析/推断"）
 7. **结论与建议**：总结核心观点和行动建议
-8. **参考来源**：按编号列出所有引用的来源，格式为 `[编号] 标题 - URL`
+8. **参考来源**：按编号逐条列出所有引用的来源，格式为 `- [编号] 标题 - URL`
 
 ### 质量要求
 - 每个关键论点必须附带至少一个来源引用
@@ -108,7 +109,7 @@ class ResearchWriter:
                     prompt=prompt,
                     response=response,
                 )
-            return response
+            return self._replace_reference_section(response, reference_entries)
         except Exception as exc:  # noqa: BLE001
             logger.warning("research writer failed: %s", exc)
             return self._fallback_report(query, sections, context, sources)
@@ -260,8 +261,26 @@ class ResearchWriter:
         """格式化来源列表，上限提升到 20。"""
         lines: list[str] = []
         for idx, entry in enumerate(reference_entries[:20], start=1):
-            lines.append(f"[{idx}] {entry['title']} - {entry['link']}")
+            lines.append(f"- [{idx}] {entry['title']} - {entry['link']}")
         return "\n".join(lines)
+
+    def _replace_reference_section(
+        self,
+        report: str,
+        reference_entries: list[dict[str, str]],
+    ) -> str:
+        """Replace model-written references with the deterministic source list."""
+        source_lines = self._format_sources(reference_entries)
+        if not source_lines:
+            source_lines = "无可引用来源。"
+        reference_section = f"## 8. 参考来源\n\n{source_lines}"
+        pattern = re.compile(
+            r"(?im)^#{0,6}\s*(?:8[.、]\s*)?\*{0,2}参考来源\*{0,2}\s*$"
+        )
+        match = pattern.search(report)
+        if match is None:
+            return f"{report.rstrip()}\n\n{reference_section}"
+        return f"{report[:match.start()].rstrip()}\n\n{reference_section}"
 
     def _collect_reference_entries(
         self,

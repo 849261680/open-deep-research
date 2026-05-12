@@ -140,6 +140,7 @@ code, pre {
   margin-bottom: 16px;
   color: #0e0f0c;
   font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .markdown-content ul,
@@ -155,6 +156,7 @@ code, pre {
 
 .markdown-content li {
   margin-bottom: 8px;
+  overflow-wrap: anywhere;
 }
 
 .markdown-content li > ul,
@@ -176,6 +178,7 @@ code, pre {
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
   transition: color 150ms ease;
+  overflow-wrap: anywhere;
 }
 
 .markdown-content a:hover {

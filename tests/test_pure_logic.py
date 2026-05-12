@@ -694,7 +694,7 @@ class TestResearchWriter:
             )
         )
 
-        assert report == "# report"
+        assert report == "# report\n\n## 8. 参考来源\n\n无可引用来源。"
         assert "报告类型：detailed_report" in captured_prompt
         assert "语气：analytical" in captured_prompt
 
@@ -774,6 +774,50 @@ class TestResearchWriter:
         ]
         assert index["https://example.com/primary"] == 1
         assert index["https://example.com/section"] == 2
+
+    def test_writer_replaces_hallucinated_reference_section(self, monkeypatch):
+        writer = ResearchWriter()
+        sources = [
+            ResearchSource(
+                title="国家数据局区块链供应链金融案例",
+                link="https://www.nda.gov.cn/sjj/ywpd/zcgh/0708/case.html",
+            ),
+            ResearchSource(
+                title="IBM Food Trust documentation",
+                link="https://www.ibm.com/food-trust",
+            ),
+        ]
+        malformed_report = """# 区块链供应链研究
+
+## 7. 结论与建议
+区块链供应链项目需要重点核验落地案例。
+
+## 8. 参考来源
+[6] 国家数据局区块链供应链金融案例 - https://www.nda.gov.cn/sjj/ywpd/zcgh/0708/case.html
+[6] 2024-2025年全球区块链供应链金融平台的实际落地案例与风险事件 - 研究上下文
+[6] 供应链区块链联盟失败的原因与教训 - 研究上下文
+"""
+
+        async def fake_llm_call(self, prompt: str, **kwargs):  # noqa: ANN001, ARG001
+            return malformed_report
+
+        monkeypatch.setattr(writer.llm.__class__, "_acall", fake_llm_call)
+
+        import asyncio
+
+        report = asyncio.run(
+            writer.write_report(
+                query="区块链供应链",
+                sections=[],
+                context=[],
+                sources=sources,
+            )
+        )
+
+        assert "- [1] 国家数据局区块链供应链金融案例 - https://www.nda.gov.cn/sjj/ywpd/zcgh/0708/case.html" in report
+        assert "- [2] IBM Food Trust documentation - https://www.ibm.com/food-trust" in report
+        assert "[6] 2024-2025年全球区块链供应链金融平台的实际落地案例与风险事件 - 研究上下文" not in report
+        assert report.count("[6]") == 0
 
     def test_fallback_report_separates_source_lines(self):
         writer = ResearchWriter()
