@@ -193,7 +193,7 @@ class TestResearchConductor:
             ).fetchone()[0]
         assert evidence_count == 2
 
-    def test_conductor_emits_structured_plan_items(self, monkeypatch):
+    def test_conductor_emits_structured_plan_items(self, monkeypatch, caplog):
         class ResearcherStub:
             def __init__(self) -> None:
                 self.query = "AI 产业趋势"
@@ -239,9 +239,15 @@ class TestResearchConductor:
         async def collect_event(event):  # noqa: ANN001
             events.append(event)
 
+        caplog.set_level("INFO", logger="backend.app.research.conductor")
         contexts = asyncio.run(conductor.conduct_research(on_event=collect_event))
         plan_event = next(event for event in events if event["type"] == "plan")
         step_start = next(event for event in events if event["type"] == "step_start")
+        plan_log = next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "research_plan_created"
+        )
 
         assert contexts[0].query == plan_item.title
         assert plan_event["data"]["plan_items"][0]["dimension"] == "数据趋势"
@@ -251,6 +257,11 @@ class TestResearchConductor:
         ]
         assert step_start["data"]["description"] == "数据趋势：需要量化判断市场变化。"
         assert step_start["data"]["queries"] == plan_item.search_queries
+        assert plan_log.task_id == "task-plan"
+        assert plan_log.query == "AI 产业趋势"
+        assert plan_log.plan_items_count == 2
+        assert plan_log.dimensions == ["数据趋势", "核心问题"]
+        assert plan_log.search_queries_count == 2
 
     def test_process_sub_query_searches_planned_queries(self, monkeypatch):
         class ResearcherStub:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from urllib.parse import urlparse
 from collections.abc import Awaitable
 from collections.abc import Callable
@@ -16,6 +17,7 @@ from .scraper import ResearchScraper
 from .source_curator import SourceCurator
 
 ResearchEventCallback = Callable[[dict[str, object]], Awaitable[None]]
+logger = logging.getLogger(__name__)
 
 
 class ResearchConductor:
@@ -57,6 +59,7 @@ class ResearchConductor:
             sub_queries.append(self.researcher.query)
         self.researcher.sub_queries = sub_queries
         self.researcher.plan_items = plan_items
+        self._log_plan_created(plan_items)
 
         await self._emit(
             on_event,
@@ -140,6 +143,21 @@ class ResearchConductor:
         all_sources = [source for item in contexts for source in item.sources]
         self.researcher.research_sources = self.source_curator.curate(all_sources)
         return contexts
+
+    def _log_plan_created(self, plan_items: list[ResearchPlanItem]) -> None:
+        """Log structured plan metadata for LogQL-based runtime verification."""
+        logger.info(
+            "research_plan_created",
+            extra={
+                "task_id": getattr(self.researcher, "task_id", None),
+                "query": self.researcher.query,
+                "plan_items_count": len(plan_items),
+                "dimensions": [item.dimension for item in plan_items if item.dimension],
+                "search_queries_count": sum(
+                    len(item.search_queries) for item in plan_items
+                ),
+            },
+        )
 
     def _ensure_original_query_plan(
         self,

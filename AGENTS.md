@@ -83,6 +83,12 @@ open_deepresearch_http_requests_total
 {service="open-deepresearch-backend"} |= "ERROR"
 ```
 
+- 排查“深度研究规划是否生成”时，优先查询：
+
+```logql
+{service="open-deepresearch-backend"} |= "research_plan_created" | json
+```
+
 - 排查“某个 trace id 对应的日志”时，优先查询：
 
 ```logql

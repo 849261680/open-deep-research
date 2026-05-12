@@ -32,8 +32,6 @@ scrape_configs:
           path:
           status:
           trace_id:
-      - output:
-          source: message
 
   - job_name: open-deepresearch-frontend
     static_configs:
