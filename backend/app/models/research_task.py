@@ -51,6 +51,12 @@ class ResearchSection(BaseModel):
     search_queries: list[str] = Field(default_factory=list)
     expected_outcome: str = ""
     evidence_targets: list[str] = Field(default_factory=list)
+    depth: int = 1
+    parent_query: str = ""
+    deep_research_reason: str = ""
+    deep_research_stop_condition: str = ""
+    evidence_gaps: list[str] = Field(default_factory=list)
+    follow_up_queries: list[str] = Field(default_factory=list)
     status: str = "pending"
     analysis: str = ""
     citations: list[Citation] = Field(default_factory=list)

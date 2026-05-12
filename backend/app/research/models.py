@@ -26,6 +26,16 @@ class ResearchPlanItem(BaseModel):
     evidence_targets: list[str] = Field(default_factory=list)
 
 
+class DeepResearchDecision(BaseModel):
+    """Decision record for whether one researched item needs deeper follow-up."""
+
+    should_continue: bool = False
+    reason: str = ""
+    evidence_gaps: list[str] = Field(default_factory=list)
+    follow_up_queries: list[str] = Field(default_factory=list)
+    stop_condition: str = ""
+
+
 class ResearchSource(BaseModel):
     title: str
     link: str
@@ -52,9 +62,12 @@ class ResearchContext(BaseModel):
 class SubQueryContext(BaseModel):
     step: int
     query: str
+    depth: int = 1
+    parent_query: str = ""
     sources: list[ResearchSource] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     compressed_evidence: str = ""
     verification: dict[str, object] = Field(default_factory=dict)
+    deep_research: DeepResearchDecision = Field(default_factory=DeepResearchDecision)
     context: str = ""

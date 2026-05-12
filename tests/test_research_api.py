@@ -20,6 +20,7 @@ from backend.app.models.research_task import ResearchTaskStatus
 from backend.app.models.user import User
 from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.research.agent import ResearchAgent
+from backend.app.research.models import DeepResearchDecision
 from backend.app.research.models import ResearchSource
 from backend.app.research.models import SubQueryContext
 from backend.app.services.research_repository import ResearchRepository
@@ -620,12 +621,15 @@ def test_orchestrator_stop_task_marks_task_failed(tmp_path) -> None:
     assert saved.error == "研究已停止"
 
 
-def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
+def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> None:
     agent = ResearchAgent(query="DeepSeek enterprise", max_concurrency=1)
     task = ResearchTask(id="task-gptr", query="DeepSeek enterprise")
+    caplog.set_level("INFO", logger="backend.app.research.agent")
     context = SubQueryContext(
         step=1,
         query="DeepSeek 企业落地案例有哪些？",
+        depth=2,
+        parent_query="DeepSeek 企业应用",
         context="发现 A",
         evidence_ids=["evidence-1"],
         compressed_evidence="研究主题: DeepSeek 企业落地案例有哪些？",
@@ -635,6 +639,13 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
             "issues": [],
             "summary": "证据充分",
         },
+        deep_research=DeepResearchDecision(
+            should_continue=False,
+            reason="证据已覆盖核心案例。",
+            evidence_gaps=["缺少海外案例"],
+            follow_up_queries=["DeepSeek overseas case study"],
+            stop_condition="达到最大深度",
+        ),
         citations=[
             Citation(
                 title="Source A",
@@ -719,7 +730,15 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
     assert report_complete["data"]["results"][0]["title"] == context.query
     assert report_complete["data"]["results"][0]["verification"]["passed"] is True
     assert report_complete["data"]["results"][0]["compressed_evidence"] == context.compressed_evidence
+    assert report_complete["data"]["results"][0]["depth"] == 2
+    assert report_complete["data"]["results"][0]["parent_query"] == "DeepSeek 企业应用"
+    assert report_complete["data"]["results"][0]["deep_research"]["reason"] == "证据已覆盖核心案例。"
     assert report_complete["data"]["sections"][0]["evidence_ids"] == context.evidence_ids
+    assert report_complete["data"]["sections"][0]["evidence_gaps"] == ["缺少海外案例"]
+    assert report_complete["data"]["sections"][0]["follow_up_queries"] == [
+        "DeepSeek overseas case study"
+    ]
+    assert report_complete["data"]["sections"][0]["deep_research_stop_condition"] == "达到最大深度"
     assert report_complete["data"]["plan"][0]["dimension"] == "案例研究"
     assert report_complete["data"]["plan"][0]["rationale"] == "用实际案例验证企业落地判断。"
     assert report_complete["data"]["plan"][0]["search_queries"] == [
@@ -732,3 +751,11 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
     ]
     assert task.cost_summary["total_tokens"] > 0
     assert task.sections[0].tool == "research_conductor"
+    report_log = next(
+        record for record in caplog.records if record.getMessage() == "report_complete"
+    )
+    assert report_log.task_id == "task-gptr"
+    assert report_log.research_event_type == "report_complete"
+    assert report_log.section_count == 1
+    assert report_log.deep_section_count == 1
+    assert report_log.max_depth == 2

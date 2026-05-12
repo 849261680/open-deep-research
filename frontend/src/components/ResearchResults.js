@@ -114,6 +114,29 @@ const PlanDetail = ({ label, children }) => {
   );
 };
 
+const DeepResearchRecord = ({ step }) => {
+  const evidenceGaps = getPlanList(step.evidence_gaps);
+  const followUpQueries = getPlanList(step.follow_up_queries);
+  const hasRecord = step.deep_research_reason || step.deep_research_stop_condition || evidenceGaps.length > 0 || followUpQueries.length > 0;
+  if (!hasRecord) return null;
+  return (
+    <PlanDetail label="深挖记录">
+      {step.deep_research_reason && (
+        <p className="mt-1 text-xs text-text-secondary font-normal">
+          {step.deep_research_reason}
+        </p>
+      )}
+      {evidenceGaps.length > 0 && <PlanPills items={evidenceGaps} />}
+      {followUpQueries.length > 0 && <PlanPills items={followUpQueries} />}
+      {step.deep_research_stop_condition && (
+        <p className="mt-2 text-xs text-text-tertiary font-normal">
+          {step.deep_research_stop_condition}
+        </p>
+      )}
+    </PlanDetail>
+  );
+};
+
 const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
 
@@ -241,6 +264,7 @@ const ResearchResults = ({ data }) => {
                       <PlanDetail label="证据目标">
                         <PlanPills items={step.evidence_targets} />
                       </PlanDetail>
+                      <DeepResearchRecord step={step} />
                     </div>
                   </div>
                 ))}

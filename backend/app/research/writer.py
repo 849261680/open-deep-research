@@ -148,6 +148,10 @@ class ResearchWriter:
                     "analysis": section.analysis,
                     "compressed_evidence": section.compressed_evidence,
                     "verification": section.verification,
+                    "deep_research_reason": section.deep_research_reason,
+                    "deep_research_stop_condition": section.deep_research_stop_condition,
+                    "evidence_gaps": section.evidence_gaps,
+                    "follow_up_queries": section.follow_up_queries,
                     "citations": section.citations,
                     "status": section.status,
                 }
@@ -160,6 +164,10 @@ class ResearchWriter:
                 "analysis": item.context,
                 "compressed_evidence": item.compressed_evidence,
                 "verification": item.verification,
+                "deep_research_reason": item.deep_research.reason,
+                "deep_research_stop_condition": item.deep_research.stop_condition,
+                "evidence_gaps": item.deep_research.evidence_gaps,
+                "follow_up_queries": item.deep_research.follow_up_queries,
                 "citations": item.citations,
                 "status": "completed",
             }
@@ -177,16 +185,37 @@ class ResearchWriter:
         compressed_evidence = str(item.get("compressed_evidence", "")).strip() or "[无证据摘要]"
         verification = item.get("verification", {})
         verification_text = self._format_verification_summary(verification)
+        deep_research_text = self._format_deep_research_summary(item)
         citations = item.get("citations", [])
         citation_text = self._format_section_citations(citations, source_index)
         return (
             f"### {title}\n"
             f"- 状态: {status}\n"
             f"- 校验: {verification_text}\n"
+            f"- 深挖记录: {deep_research_text}\n"
             f"- 分析摘要:\n{analysis}\n\n"
             f"- 证据压缩:\n{compressed_evidence}\n\n"
             f"- 章节引用编号:\n{citation_text}"
         )
+
+    def _format_deep_research_summary(self, item: dict[str, object]) -> str:
+        """Render evidence-gap follow-up decisions for the report writer prompt."""
+        reason = str(item.get("deep_research_reason", "")).strip()
+        stop_condition = str(item.get("deep_research_stop_condition", "")).strip()
+        evidence_gaps = item.get("evidence_gaps", [])
+        follow_up_queries = item.get("follow_up_queries", [])
+        parts: list[str] = []
+        if reason:
+            parts.append(f"理由={reason}")
+        if isinstance(evidence_gaps, list) and evidence_gaps:
+            parts.append("证据缺口=" + "；".join(str(gap) for gap in evidence_gaps))
+        if isinstance(follow_up_queries, list) and follow_up_queries:
+            parts.append(
+                "后续查询=" + "；".join(str(query) for query in follow_up_queries)
+            )
+        if stop_condition:
+            parts.append(f"停止条件={stop_condition}")
+        return "；".join(parts) if parts else "无额外深挖"
 
     def _format_verification_summary(self, verification: object) -> str:
         if not isinstance(verification, dict) or not verification:
@@ -372,11 +401,14 @@ class ResearchWriter:
                 "step": item.step,
                 "title": item.query,
                 "status": "completed",
+                "depth": item.depth,
+                "parent_query": item.parent_query,
                 "analysis": item.context,
                 "citations": [citation.model_dump() for citation in item.citations],
                 "evidence_ids": item.evidence_ids,
                 "compressed_evidence": item.compressed_evidence,
                 "verification": item.verification,
+                "deep_research": item.deep_research.model_dump(),
                 "search_sources": [
                     {
                         "title": source.title,

@@ -14,6 +14,8 @@ class ResearchConfig(BaseModel):
 
     max_sub_queries: int = Field(default=5, ge=1, le=10)
     max_concurrency: int = Field(default=3, ge=1, le=8)
+    deep_research_breadth: int = Field(default=2, ge=0, le=5)
+    deep_research_depth: int = Field(default=2, ge=1, le=4)
     retriever: str = "auto"
     report_type: str = "research_report"
     tone: str = "objective"
@@ -27,6 +29,8 @@ class ResearchConfig(BaseModel):
         data: dict[str, object] = {}
         _set_int_from_env(data, "max_sub_queries", "RESEARCH_MAX_SUB_QUERIES")
         _set_int_from_env(data, "max_concurrency", "RESEARCH_MAX_CONCURRENCY")
+        _set_int_from_env(data, "deep_research_breadth", "RESEARCH_DEEP_RESEARCH_BREADTH")
+        _set_int_from_env(data, "deep_research_depth", "RESEARCH_DEEP_RESEARCH_DEPTH")
         _set_str_from_env(data, "retriever", "RESEARCH_RETRIEVER")
         _set_str_from_env(data, "report_type", "RESEARCH_REPORT_TYPE")
         _set_str_from_env(data, "tone", "RESEARCH_TONE")

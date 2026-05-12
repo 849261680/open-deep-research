@@ -30,6 +30,7 @@ from backend.app.research.conductor import ResearchConductor
 from backend.app.research.retriever import ResearchRetriever
 from backend.app.research.writer import ResearchWriter
 from backend.app.research.source_curator import SourceCurator, _score_source
+from backend.app.research.models import DeepResearchDecision
 from backend.app.research.models import ResearchPlanItem
 from backend.app.research.models import ResearchSource
 from backend.app.research.models import SubQueryContext
@@ -84,6 +85,8 @@ class TestResearchConfig:
     def test_config_can_be_loaded_from_environment(self, monkeypatch):
         monkeypatch.setenv("RESEARCH_MAX_SUB_QUERIES", "2")
         monkeypatch.setenv("RESEARCH_MAX_CONCURRENCY", "1")
+        monkeypatch.setenv("RESEARCH_DEEP_RESEARCH_BREADTH", "2")
+        monkeypatch.setenv("RESEARCH_DEEP_RESEARCH_DEPTH", "3")
         monkeypatch.setenv("RESEARCH_RETRIEVER", "duckduckgo")
         monkeypatch.setenv("RESEARCH_REPORT_TYPE", "detailed_report")
         monkeypatch.setenv("RESEARCH_TONE", "analytical")
@@ -95,6 +98,8 @@ class TestResearchConfig:
 
         assert config.max_sub_queries == 2
         assert config.max_concurrency == 1
+        assert config.deep_research_breadth == 2
+        assert config.deep_research_depth == 3
         assert config.retriever == "duckduckgo"
         assert config.report_type == "detailed_report"
         assert config.tone == "analytical"
@@ -113,6 +118,7 @@ class TestResearchConfig:
 
         assert agent.max_sub_queries == 2
         assert agent.max_concurrency == 1
+        assert agent.config.deep_research_depth == 2
         assert agent.config.retriever == "duckduckgo"
         assert agent.config.report_type == "detailed_report"
         assert agent.config.tone == "analytical"
@@ -245,7 +251,7 @@ class TestResearchConductor:
         async def fake_plan_detailed(**kwargs):  # noqa: ANN003
             return [plan_item]
 
-        async def fake_process(step: int, sub_query: str, on_event=None):  # noqa: ANN001
+        async def fake_process(step: int, sub_query: str, on_event=None, **kwargs):  # noqa: ANN001, ARG001
             return SubQueryContext(step=step, query=sub_query, context="分析")
 
         monkeypatch.setattr(conductor.retriever, "search", fake_search)
@@ -286,7 +292,7 @@ class TestResearchConductor:
     def test_process_sub_query_searches_planned_queries(self, monkeypatch):
         class ResearcherStub:
             def __init__(self) -> None:
-                self.query = "AI 产业趋势"
+                self.query = "AI 产业采用率有哪些最新数据？"
                 self.cost_tracker = CostTracker()
                 self.visited_urls = set()
                 self.evidence_store = EvidenceStore()
@@ -418,6 +424,132 @@ class TestResearchConductor:
         assert scraped_titles == ["Enterprise AI adoption survey report 2026"]
         assert [source.title for source in context.sources] == scraped_titles
 
+    def test_conductor_runs_deeper_query_when_evidence_has_gaps(
+        self,
+        monkeypatch,
+        caplog,
+    ):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业采用率有哪些最新数据？"
+                self.max_sub_queries = 1
+                self.max_concurrency = 1
+                self.config = ResearchConfig(
+                    deep_research_breadth=1,
+                    deep_research_depth=2,
+                )
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.sub_queries = []
+                self.context = []
+                self.research_sources = []
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-deep"
+                self.repository = None
+
+        conductor = ResearchConductor(ResearcherStub())
+        caplog.set_level("INFO", logger="backend.app.research.conductor")
+        plan_item = ResearchPlanItem(
+            step=1,
+            title="AI 产业采用率有哪些最新数据？",
+            dimension="数据趋势",
+            rationale="需要量化判断市场变化。",
+            search_queries=["AI adoption rate 2026 enterprise survey"],
+            expected_outcome="获得企业采用率、样本和时间范围。",
+            evidence_targets=["统计数据", "行业报告"],
+        )
+        searched_queries: list[str] = []
+
+        async def fake_initial_plan(**kwargs):  # noqa: ANN003
+            return [plan_item]
+
+        async def fake_deeper_plan(**kwargs):  # noqa: ANN003
+            return DeepResearchDecision(
+                should_continue=True,
+                reason="缺少分行业样本。",
+                evidence_gaps=["缺少制造业样本"],
+                follow_up_queries=["AI adoption manufacturing survey 2026"],
+                stop_condition="补足分行业样本或达到最大深度",
+            )
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            searched_queries.append(query)
+            return [
+                ResearchSource(
+                    title=f"Survey {query}",
+                    link=f"https://example.com/{len(searched_queries)}",
+                    source="web",
+                    query=query,
+                    snippet="survey data sample size adoption rate",
+                    extracted_content="survey data sample size adoption rate " * 20,
+                )
+            ]
+
+        async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
+            return sources
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return f"分析：{query}"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {"passed": False, "score": 0.5, "issues": ["缺少行业细分"], "summary": "gap"}
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.query_planner, "plan_detailed", fake_initial_plan)
+        monkeypatch.setattr(conductor.query_planner, "plan_deeper_research", fake_deeper_plan)
+        monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        events = []
+
+        async def collect_event(event):  # noqa: ANN001
+            events.append(event)
+
+        contexts = asyncio.run(conductor.conduct_research(on_event=collect_event))
+
+        assert [context.query for context in contexts] == [
+            "AI 产业采用率有哪些最新数据？",
+            "AI adoption manufacturing survey 2026",
+        ]
+        assert contexts[0].deep_research.reason == "缺少分行业样本。"
+        assert contexts[1].depth == 2
+        assert contexts[1].parent_query == "AI 产业采用率有哪些最新数据？"
+        decision_event = next(
+            event for event in events if event["type"] == "deep_research_decision"
+        )
+        assert decision_event["data"]["reason"] == "缺少分行业样本。"
+        assert decision_event["data"]["evidence_gaps"] == ["缺少制造业样本"]
+        assert decision_event["data"]["follow_up_queries"] == [
+            "AI adoption manufacturing survey 2026"
+        ]
+        logged_messages = [record.getMessage() for record in caplog.records]
+        assert "step_start" in logged_messages
+        assert "deep_research_decision" in logged_messages
+        assert "step_complete" in logged_messages
+        decision_log = next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "deep_research_decision"
+        )
+        assert decision_log.task_id == "task-deep"
+        assert decision_log.should_continue is True
+        assert decision_log.evidence_gaps == ["缺少制造业样本"]
+        assert decision_log.follow_up_queries == [
+            "AI adoption manufacturing survey 2026"
+        ]
+        child_start_log = next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "step_start" and record.step == 101
+        )
+        assert child_start_log.parent_query == "AI 产业采用率有哪些最新数据？"
+
 
 class TestQueryPlanner:
     def test_plan_detailed_parses_structured_research_strategy(self, monkeypatch):
@@ -479,6 +611,59 @@ class TestQueryPlanner:
             )
         ]
         assert legacy_queries == ["AI 产业采用率有哪些最新数据？"]
+
+    def test_plan_deeper_research_parses_reason_gaps_and_stop_condition(self, monkeypatch):
+        planner = QueryPlanner()
+        plan_item = ResearchPlanItem(
+            step=1,
+            title="AI 产业采用率有哪些最新数据？",
+            dimension="数据趋势",
+            rationale="需要量化判断市场变化。",
+            search_queries=["AI adoption rate 2026 enterprise survey"],
+            expected_outcome="获得企业采用率、样本和时间范围。",
+            evidence_targets=["统计数据", "行业报告"],
+        )
+        response = """
+        {
+          "should_continue": true,
+          "reason": "现有资料缺少分行业采用率。",
+          "evidence_gaps": ["缺少制造业样本", "缺少金融业样本"],
+          "follow_up_queries": [
+            "2026 AI adoption rate manufacturing survey",
+            "2026 AI adoption rate financial services survey"
+          ],
+          "stop_condition": "拿到分行业样本数据或达到最大深度"
+        }
+        """
+
+        async def fake_acall(self, prompt: str, temperature: float = 0.2):  # noqa: ARG001
+            return response
+
+        monkeypatch.setattr(
+            "backend.app.llms.deepseek_llm.DeepSeekLLM._acall",
+            fake_acall,
+        )
+
+        import asyncio
+
+        decision = asyncio.run(
+            planner.plan_deeper_research(
+                query=plan_item.title,
+                plan_item=plan_item,
+                compressed_evidence="报告只给出了总体采用率。",
+                verification={"passed": False, "issues": ["缺少行业细分"]},
+                max_follow_up_queries=2,
+            )
+        )
+
+        assert decision.should_continue is True
+        assert decision.reason == "现有资料缺少分行业采用率。"
+        assert decision.evidence_gaps == ["缺少制造业样本", "缺少金融业样本"]
+        assert decision.follow_up_queries == [
+            "2026 AI adoption rate manufacturing survey",
+            "2026 AI adoption rate financial services survey",
+        ]
+        assert decision.stop_condition == "拿到分行业样本数据或达到最大深度"
 
 
 class TestResearchWriter:

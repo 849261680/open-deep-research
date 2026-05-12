@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 
 from ..models.research_task import Citation
@@ -17,6 +18,8 @@ from .models import ResearchPlanItem
 from .models import ResearchSource
 from .models import SubQueryContext
 from .writer import ResearchWriter
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchAgent:
@@ -142,7 +145,7 @@ class ResearchAgent:
                 "data": task.cost_summary,
             }
 
-            yield {
+            report_payload = {
                 "type": "report_complete",
                 "message": "研究完成",
                 "data": {
@@ -163,6 +166,12 @@ class ResearchAgent:
                             "search_queries": section.search_queries,
                             "expected_outcome": section.expected_outcome,
                             "evidence_targets": section.evidence_targets,
+                            "depth": section.depth,
+                            "parent_query": section.parent_query,
+                            "deep_research_reason": section.deep_research_reason,
+                            "deep_research_stop_condition": section.deep_research_stop_condition,
+                            "evidence_gaps": section.evidence_gaps,
+                            "follow_up_queries": section.follow_up_queries,
                         }
                         for section in task.sections
                     ],
@@ -172,6 +181,8 @@ class ResearchAgent:
                     "timestamp": task.completed_at,
                 },
             }
+            self._log_report_complete(task, contexts)
+            yield report_payload
         finally:
             if not conduct_task.done():
                 conduct_task.cancel()
@@ -205,6 +216,12 @@ class ResearchAgent:
                         if plan_item else "收集并压缩与该子查询相关的上下文"
                     ),
                     evidence_targets=plan_item.evidence_targets if plan_item else [],
+                    depth=context.depth,
+                    parent_query=context.parent_query,
+                    deep_research_reason=context.deep_research.reason,
+                    deep_research_stop_condition=context.deep_research.stop_condition,
+                    evidence_gaps=context.deep_research.evidence_gaps,
+                    follow_up_queries=context.deep_research.follow_up_queries,
                     status="completed",
                     analysis=context.context,
                     citations=context.citations,
@@ -317,6 +334,25 @@ class ResearchAgent:
         verification = event_data.get("verification", section.verification)
         if isinstance(verification, dict):
             section.verification = verification
+        section.depth = int(event_data.get("depth", section.depth))
+        section.parent_query = str(event_data.get("parent_query", section.parent_query))
+        deep_research = event_data.get("deep_research", {})
+        if isinstance(deep_research, dict):
+            section.deep_research_reason = str(
+                deep_research.get("reason", section.deep_research_reason)
+            )
+            section.deep_research_stop_condition = str(
+                deep_research.get(
+                    "stop_condition",
+                    section.deep_research_stop_condition,
+                )
+            )
+            evidence_gaps = deep_research.get("evidence_gaps", [])
+            if isinstance(evidence_gaps, list):
+                section.evidence_gaps = [str(item) for item in evidence_gaps]
+            follow_up_queries = deep_research.get("follow_up_queries", [])
+            if isinstance(follow_up_queries, list):
+                section.follow_up_queries = [str(item) for item in follow_up_queries]
         citations = event_data.get("citations", [])
         if isinstance(citations, list):
             section.citations = [
@@ -338,3 +374,28 @@ class ResearchAgent:
             if item.title == query:
                 return item
         return None
+
+    def _log_report_complete(
+        self,
+        task: ResearchTask,
+        contexts: list[SubQueryContext],
+    ) -> None:
+        """Write final report metadata as a structured backend log."""
+        root_sections = [context for context in contexts if context.depth == 1]
+        deeper_sections = [context for context in contexts if context.depth > 1]
+        logger.info(
+            "report_complete",
+            extra={
+                "task_id": task.id,
+                "research_event_type": "report_complete",
+                "query": task.query,
+                "status": task.status.value,
+                "section_count": len(contexts),
+                "root_section_count": len(root_sections),
+                "deep_section_count": len(deeper_sections),
+                "max_depth": max((context.depth for context in contexts), default=0),
+                "source_count": len(self.research_sources),
+                "total_tokens": task.cost_summary.get("total_tokens", 0),
+                "estimated_cost_usd": task.cost_summary.get("estimated_cost_usd", 0),
+            },
+        )
