@@ -590,7 +590,8 @@ def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -
 
     asyncio.run(collect())
 
-    assert events[0]["type"] == "planning"
+    assert events[0]["type"] == "task_created"
+    assert events[0]["message"] == "研究任务已创建"
     assert events[0]["data"]["task_id"] == events[1]["data"]["id"]
     assert events[0]["data"]["query"] == "new query"
     assert orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)

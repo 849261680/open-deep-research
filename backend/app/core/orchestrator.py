@@ -36,8 +36,8 @@ class ResearchOrchestrator:
         task.touch()
         self.repository.save_task(task)
         yield self._event(
-            "planning",
-            "研究任务已创建，正在规划研究...",
+            "task_created",
+            "研究任务已创建",
             {
                 "id": task.id,
                 "task_id": task.id,

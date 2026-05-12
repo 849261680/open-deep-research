@@ -242,6 +242,15 @@ class ResearchConductor:
             sub_query,
         )
         search_results = await self._search_planned_queries(planned_queries)
+        plan_item = self._plan_item_for_query(
+            getattr(self.researcher, "plan_items", []),
+            sub_query,
+        )
+        search_results = self.source_curator.curate(
+            search_results,
+            max_sources=8,
+            evidence_targets=plan_item.evidence_targets if plan_item else None,
+        )
         await self._emit_search_result(
             on_event,
             step=step,

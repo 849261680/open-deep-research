@@ -32,6 +32,30 @@ _SPAM_KEYWORDS = frozenset({
     "promo", "bonus", "free-download", "torrent",
 })
 
+_TARGET_KEYWORDS = {
+    "统计数据": frozenset({
+        "data", "statistics", "statistical", "survey", "dataset", "census",
+        "adoption rate", "sample size", "market size", "数据", "统计", "调研",
+        "样本", "采用率", "市场规模",
+    }),
+    "行业报告": frozenset({
+        "report", "whitepaper", "market", "industry", "research", "survey",
+        "报告", "白皮书", "行业", "市场", "调研", "研究",
+    }),
+    "案例研究": frozenset({
+        "case", "case study", "customer", "story", "use case", "案例", "客户",
+        "实践", "落地", "应用",
+    }),
+    "论文": frozenset({
+        "paper", "journal", "doi", "arxiv", "study", "conference", "论文",
+        "期刊", "研究", "会议",
+    }),
+    "官方文档": frozenset({
+        "official", "docs", "documentation", "developer", "manual", "guide",
+        "官方", "文档", "指南", "手册",
+    }),
+}
+
 
 def _score_source(source: ResearchSource) -> float:
     """为来源计算可信度评分（0.0 - 1.0）。"""
@@ -86,25 +110,79 @@ class SourceCurator:
     """Curates sources by deduping, scoring credibility, and keeping quality sources."""
 
     def curate(
-        self, sources: list[ResearchSource], max_sources: int = 15
+        self,
+        sources: list[ResearchSource],
+        max_sources: int = 15,
+        evidence_targets: list[str] | None = None,
     ) -> list[ResearchSource]:
         # 1. 计算评分
-        scored = [(source, _score_source(source)) for source in sources]
+        targets = _normalize_targets(evidence_targets)
+        scored = [
+            (
+                source,
+                _score_source(source) + _target_bonus(source, targets),
+                _matches_targets(source, targets),
+            )
+            for source in sources
+        ]
 
         # 2. 去重
         seen_links: set[str] = set()
-        unique: list[tuple[ResearchSource, float]] = []
-        for source, score in scored:
+        unique: list[tuple[ResearchSource, float, bool]] = []
+        for source, score, matches_targets in scored:
             if not source.link or source.link in seen_links:
                 continue
             seen_links.add(source.link)
             # 过滤掉完全无内容且评分极低的来源
             if not (source.extracted_content or source.snippet) and score < 0.3:
                 continue
-            unique.append((source, score))
+            unique.append((source, score, matches_targets))
+
+        matched = [item for item in unique if item[2]]
+        if targets and matched:
+            unique = [*matched, *[item for item in unique if not item[2] and item[1] >= 0.75]]
 
         # 3. 按可信度排序（高 → 低）
         unique.sort(key=lambda pair: pair[1], reverse=True)
 
         # 4. 取 top-N
-        return [source for source, _score in unique[:max_sources]]
+        return [source for source, _score, _matches_targets in unique[:max_sources]]
+
+
+def _normalize_targets(evidence_targets: list[str] | None) -> list[str]:
+    """Keep known evidence target labels while preserving order."""
+    normalized = []
+    seen: set[str] = set()
+    for target in evidence_targets or []:
+        cleaned = target.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+    return normalized
+
+
+def _target_bonus(source: ResearchSource, targets: list[str]) -> float:
+    """Give a source a quality boost when it matches evidence targets."""
+    if not targets:
+        return 0.0
+    return 0.2 if _matches_targets(source, targets) else -0.15
+
+
+def _matches_targets(source: ResearchSource, targets: list[str]) -> bool:
+    """Check whether source text or URL matches one requested evidence target."""
+    if not targets:
+        return False
+    haystack = " ".join(
+        [
+            source.title,
+            source.link,
+            source.snippet,
+            source.extracted_content[:500],
+        ]
+    ).lower()
+    for target in targets:
+        keywords = _TARGET_KEYWORDS.get(target, frozenset({target.lower()}))
+        if any(keyword.lower() in haystack for keyword in keywords):
+            return True
+    return False

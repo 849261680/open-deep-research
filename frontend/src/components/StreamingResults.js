@@ -33,9 +33,13 @@ const StreamingResults = ({ updates }) => {
 
   const isComplete = updates.length > 0 && updates[updates.length - 1]?.type === 'report_complete';
   const latestUpdate = updates[updates.length - 1];
+  const visibleUpdates = updates.length > 1
+    ? updates.filter((update) => update.type !== 'task_created')
+    : updates;
 
   const getUpdateIcon = (type) => {
     switch (type) {
+      case 'task_created': return CheckCircle;
       case 'planning': case 'planning_step': return Brain;
       case 'plan': return CheckCircle;
       case 'step_start': case 'step_retry': case 'search_progress': return Search;
@@ -51,6 +55,8 @@ const StreamingResults = ({ updates }) => {
 
   const getUpdateStyle = (type) => {
     switch (type) {
+      case 'task_created':
+        return { iconColor: '#637061', bg: '#F5F8F2', dot: '#637061' };
       case 'planning': case 'planning_step': case 'step_start': case 'step_retry':
       case 'search_progress': case 'analysis_progress': case 'report_generating':
         return { iconColor: '#163300', bg: 'rgba(159,232,112,0.12)', dot: '#9fe870' };
@@ -68,6 +74,7 @@ const StreamingResults = ({ updates }) => {
 
   const getStageText = (type) => {
     switch (type) {
+      case 'task_created': return '任务已创建';
       case 'planning': case 'planning_step': case 'plan': return '规划研究路径中...';
       case 'step_start': case 'step_retry': case 'search_progress': case 'search_result': return '检索信息中...';
       case 'analysis_progress': case 'step_complete': return '分析整理中...';
@@ -95,6 +102,8 @@ const StreamingResults = ({ updates }) => {
     updates.forEach((update) => {
       timestamp = getUpdateTimestamp(update);
       switch (update.type) {
+        case 'task_created':
+          phase = 'created'; statusType = 'task_created'; break;
         case 'planning': case 'planning_step':
           phase = 'planning'; statusType = update.type;
           latestPlanningMessage = update.message; break;
@@ -103,7 +112,17 @@ const StreamingResults = ({ updates }) => {
           if (Array.isArray(update.data)) totalSteps = update.data.length;
           else if (Array.isArray(update.data?.sub_queries)) totalSteps = update.data.sub_queries.length;
           break;
-        case 'search_progress': case 'step_start': case 'analysis_progress': case 'search_result':
+        case 'search_result':
+          if (update.data?.step === 0) {
+            phase = 'planning'; statusType = 'planning_step';
+            latestPlanningMessage = update.message;
+            break;
+          }
+          phase = 'researching'; statusType = 'search_progress';
+          if (typeof update.data?.total === 'number') totalSteps = Math.max(totalSteps, update.data.total);
+          if (typeof update.data?.step === 'number') activeQueries.set(update.data.step, update.data.query || update.message);
+          latestActiveQuery = update.data?.query || update.message; break;
+        case 'search_progress': case 'step_start': case 'analysis_progress':
           phase = 'researching'; statusType = 'search_progress';
           if (typeof update.data?.total === 'number') totalSteps = Math.max(totalSteps, update.data.total);
           if (typeof update.data?.step === 'number') activeQueries.set(update.data.step, update.data.query || update.message);
@@ -128,6 +147,8 @@ const StreamingResults = ({ updates }) => {
     switch (phase) {
       case 'planning':
         return { type: statusType, timestamp, title: latestPlanningMessage || '正在规划研究路径...', detail: totalSteps > 0 ? `已生成 ${totalSteps} 个子查询规划。` : '正在拆解问题并规划研究路径。', activeItems: [] };
+      case 'created':
+        return { type: statusType, timestamp, title: '研究任务已创建', detail: '准备规划研究路径。', activeItems: [] };
       case 'researching': {
         const detailParts = [];
         if (totalSteps > 0) detailParts.push(`已完成 ${completedCount}/${totalSteps}`);
@@ -330,7 +351,7 @@ const StreamingResults = ({ updates }) => {
             className="rounded-full px-3 py-1 text-text-secondary flex-shrink-0"
             style={{ fontSize: '12px', fontWeight: 500, background: '#EBF0E7' }}
           >
-            {updates.length} 个更新
+            {visibleUpdates.length} 个更新
           </span>
         </div>
       </div>
@@ -379,7 +400,7 @@ const StreamingResults = ({ updates }) => {
           ref={scrollContainerRef}
           className="space-y-2 max-h-80 overflow-y-auto"
         >
-          {updates.map((update, index) => {
+          {visibleUpdates.map((update, index) => {
             const IconComponent = getUpdateIcon(update.type);
             const style = getUpdateStyle(update.type);
             const shouldAnimate = animatingIndex === index && !isComplete;

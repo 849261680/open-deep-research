@@ -57,6 +57,8 @@ const getCitationDomains = (citations) => {
   return items;
 };
 
+const getPlanList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+
 const DomainBadge = ({ domain, compact = false }) => {
   if (!domain) return null;
   return (
@@ -74,6 +76,41 @@ const DomainBadge = ({ domain, compact = false }) => {
     >
       <span className="truncate">{domain}</span>
     </span>
+  );
+};
+
+const PlanPills = ({ items }) => {
+  const visibleItems = getPlanList(items);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {visibleItems.map((item, index) => (
+        <span
+          key={`${item}-${index}`}
+          className="inline-flex max-w-full items-center text-text-secondary"
+          style={{
+            borderRadius: '9999px',
+            border: '1px solid #E2E5DE',
+            background: '#FFFFFF',
+            padding: '3px 9px',
+            fontSize: '12px',
+            fontWeight: 500,
+          }}
+        >
+          <span className="truncate">{item}</span>
+        </span>
+      ))}
+    </div>
+  );
+};
+
+const PlanDetail = ({ label, children }) => {
+  if (!children) return null;
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-semibold text-text-tertiary">{label}</p>
+      {children}
+    </div>
   );
 };
 
@@ -177,8 +214,33 @@ const ResearchResults = ({ data }) => {
                       {step.step}
                     </div>
                     <div className="flex-1">
-                      <h5 className="text-text-primary font-semibold" style={{ fontSize: '15px' }}>{step.title}</h5>
-                      <p className="text-sm text-text-secondary mt-0.5 font-normal">{step.description}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h5 className="text-text-primary font-semibold" style={{ fontSize: '15px' }}>{step.title}</h5>
+                        {step.dimension && (
+                          <span
+                            className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                            style={{ background: '#e2f6d5', color: '#054d28' }}
+                          >
+                            {step.dimension}
+                          </span>
+                        )}
+                      </div>
+                      {(step.rationale || step.description) && (
+                        <p className="text-sm text-text-secondary mt-1 font-normal">
+                          {step.rationale || step.description}
+                        </p>
+                      )}
+                      <PlanDetail label="搜索策略">
+                        <PlanPills items={step.search_queries} />
+                      </PlanDetail>
+                      <PlanDetail label="预期产出">
+                        <p className="mt-1 text-xs text-text-secondary font-normal">
+                          {step.expected_outcome}
+                        </p>
+                      </PlanDetail>
+                      <PlanDetail label="证据目标">
+                        <PlanPills items={step.evidence_targets} />
+                      </PlanDetail>
                     </div>
                   </div>
                 ))}

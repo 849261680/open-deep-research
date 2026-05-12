@@ -59,6 +59,26 @@ class TestEventHelper:
         event = self.orch._event("done", "完成", None)
         assert event["data"] is None
 
+    def test_run_starts_with_task_created_event(self, tmp_path):
+        repository = ResearchRepository(str(tmp_path / "research.db"))
+        orch = ResearchOrchestrator()
+        orch.repository = repository
+
+        import asyncio
+
+        async def first_event():
+            stream = orch.run("AI 产业趋势", guest_id="guest-1")
+            try:
+                return await stream.__anext__()
+            finally:
+                await stream.aclose()
+
+        event = asyncio.run(first_event())
+
+        assert event["type"] == "task_created"
+        assert event["message"] == "研究任务已创建"
+        assert event["data"]["status"] == "planning"
+
 
 class TestResearchConfig:
     def test_config_can_be_loaded_from_environment(self, monkeypatch):
@@ -330,6 +350,73 @@ class TestResearchConductor:
             "AI 企业采用率 调研 2026",
         ]
         assert [source.query for source in context.sources] == searched_queries
+
+    def test_process_sub_query_filters_sources_by_evidence_targets(self, monkeypatch):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业趋势"
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-target-quality"
+                self.repository = None
+                self.plan_items = [
+                    ResearchPlanItem(
+                        step=1,
+                        title="AI 产业采用率有哪些最新数据？",
+                        search_queries=["AI adoption rate"],
+                        evidence_targets=["统计数据", "行业报告"],
+                    )
+                ]
+
+        conductor = ResearchConductor(ResearcherStub())
+        scraped_titles: list[str] = []
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            return [
+                ResearchSource(
+                    title="Personal hot take",
+                    link="https://random-blog.xyz/ai-opinion",
+                    snippet="AI adoption feels faster this year.",
+                    extracted_content="Opinion " * 80,
+                ),
+                ResearchSource(
+                    title="Enterprise AI adoption survey report 2026",
+                    link="https://example.org/reports/ai-adoption-survey-2026.pdf",
+                    snippet="Survey data from 2,000 enterprises reports adoption rate and sample size.",
+                    extracted_content="statistics data adoption rate sample size " * 40,
+                ),
+            ]
+
+        async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
+            scraped_titles.extend(source.title for source in sources)
+            return sources
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return "压缩后的上下文"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {"passed": True, "score": 1.0, "issues": [], "summary": "ok"}
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        context = asyncio.run(
+            conductor._process_sub_query(
+                1,
+                "AI 产业采用率有哪些最新数据？",
+            )
+        )
+
+        assert scraped_titles == ["Enterprise AI adoption survey report 2026"]
+        assert [source.title for source in context.sources] == scraped_titles
 
 
 class TestQueryPlanner:
@@ -679,6 +766,38 @@ class TestSourceCurator:
         result = self.curator.curate(sources)
         # Gov should be first
         assert "gov.cn" in result[0].link
+
+    def test_evidence_targets_prefer_matching_source_types(self):
+        sources = [
+            ResearchSource(
+                title="Personal hot take",
+                link="https://random-blog.xyz/ai-opinion",
+                snippet="AI adoption feels faster this year.",
+                extracted_content="Opinion " * 80,
+            ),
+            ResearchSource(
+                title="Enterprise AI adoption survey report 2026",
+                link="https://example.org/reports/ai-adoption-survey-2026.pdf",
+                snippet="Survey data from 2,000 enterprises reports adoption rate and sample size.",
+                extracted_content="statistics data adoption rate sample size " * 40,
+            ),
+            ResearchSource(
+                title="Social thread",
+                link="https://reddit.com/r/ai/comments/1",
+                snippet="People discuss AI adoption.",
+                extracted_content="discussion " * 80,
+            ),
+        ]
+
+        result = self.curator.curate(
+            sources,
+            max_sources=2,
+            evidence_targets=["统计数据", "行业报告"],
+        )
+
+        assert [source.title for source in result] == [
+            "Enterprise AI adoption survey report 2026"
+        ]
 
 
 # ═══════════════════════════════════════════════════════════════════
