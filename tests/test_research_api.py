@@ -659,7 +659,23 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
                 {
                     "type": "plan",
                     "message": "子查询规划完成",
-                    "data": [context.query],
+                    "data": {
+                        "sub_queries": [context.query],
+                        "plan_items": [
+                            {
+                                "step": 1,
+                                "title": context.query,
+                                "dimension": "案例研究",
+                                "rationale": "用实际案例验证企业落地判断。",
+                                "search_queries": [
+                                    "DeepSeek enterprise case study",
+                                    "DeepSeek 企业 落地 案例",
+                                ],
+                                "expected_outcome": "获得可引用的企业应用案例。",
+                                "evidence_targets": ["案例研究", "客户故事"],
+                            }
+                        ],
+                    },
                 }
             )
             await on_event(
@@ -703,5 +719,15 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch) -> None:
     assert report_complete["data"]["results"][0]["verification"]["passed"] is True
     assert report_complete["data"]["results"][0]["compressed_evidence"] == context.compressed_evidence
     assert report_complete["data"]["sections"][0]["evidence_ids"] == context.evidence_ids
+    assert report_complete["data"]["plan"][0]["dimension"] == "案例研究"
+    assert report_complete["data"]["plan"][0]["rationale"] == "用实际案例验证企业落地判断。"
+    assert report_complete["data"]["plan"][0]["search_queries"] == [
+        "DeepSeek enterprise case study",
+        "DeepSeek 企业 落地 案例",
+    ]
+    assert report_complete["data"]["plan"][0]["evidence_targets"] == [
+        "案例研究",
+        "客户故事",
+    ]
     assert task.cost_summary["total_tokens"] > 0
     assert task.sections[0].tool == "research_conductor"

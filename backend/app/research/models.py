@@ -14,6 +14,18 @@ class ResearchQuestion(BaseModel):
     search_queries: list[str] = Field(default_factory=list)
 
 
+class ResearchPlanItem(BaseModel):
+    """Structured plan item for one research dimension."""
+
+    step: int
+    title: str
+    dimension: str = ""
+    rationale: str = ""
+    search_queries: list[str] = Field(default_factory=list)
+    expected_outcome: str = ""
+    evidence_targets: list[str] = Field(default_factory=list)
+
+
 class ResearchSource(BaseModel):
     title: str
     link: str

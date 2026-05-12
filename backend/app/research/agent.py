@@ -13,6 +13,7 @@ from ..services.research_repository import ResearchRepository
 from .conductor import ResearchConductor
 from .config import ResearchConfig
 from .cost_tracker import CostTracker
+from .models import ResearchPlanItem
 from .models import ResearchSource
 from .models import SubQueryContext
 from .writer import ResearchWriter
@@ -43,6 +44,7 @@ class ResearchAgent:
         self.context: list[SubQueryContext] = []
         self.research_sources: list[ResearchSource] = []
         self.visited_urls: set[str] = set()
+        self.plan_items: list[ResearchPlanItem] = []
         self.repository = repository
         self.task_id: str | None = None
         self.evidence_store = EvidenceStore()
@@ -85,16 +87,9 @@ class ResearchAgent:
                         break
                     continue
                 if event["type"] == "plan":
-                    event_data = event.get("data", {})
-                    sub_queries = (
-                        event_data.get("sub_queries", [])
-                        if isinstance(event_data, dict)
-                        else event_data
-                    )
-                    if isinstance(sub_queries, list):
-                        task.sections = self._sub_queries_to_sections(
-                            [str(item) for item in sub_queries]
-                        )
+                    sections = self._sections_from_plan_event(event.get("data", {}))
+                    if sections:
+                        task.sections = sections
                         task.status = ResearchTaskStatus.RESEARCHING
                         task.touch()
                         yield {
@@ -161,10 +156,13 @@ class ResearchAgent:
                         {
                             "step": section.step,
                             "title": section.title,
+                            "dimension": section.dimension,
+                            "rationale": section.rationale,
                             "description": section.description,
                             "tool": section.tool,
                             "search_queries": section.search_queries,
                             "expected_outcome": section.expected_outcome,
+                            "evidence_targets": section.evidence_targets,
                         }
                         for section in task.sections
                     ],
@@ -187,15 +185,26 @@ class ResearchAgent:
     ) -> list[ResearchSection]:
         sections: list[ResearchSection] = []
         for context in contexts:
+            plan_item = self._plan_item_for_query(context.query)
             sections.append(
                 ResearchSection(
                     id=f"subquery-{context.step}",
                     step=context.step,
                     title=context.query,
-                    description="GPT Researcher sub-query",
+                    description=(
+                        plan_item.rationale if plan_item else "GPT Researcher sub-query"
+                    ),
+                    dimension=plan_item.dimension if plan_item else "",
+                    rationale=plan_item.rationale if plan_item else "",
                     tool="research_conductor",
-                    search_queries=[context.query],
-                    expected_outcome="收集并压缩与该子查询相关的上下文",
+                    search_queries=(
+                        plan_item.search_queries if plan_item else [context.query]
+                    ),
+                    expected_outcome=(
+                        plan_item.expected_outcome
+                        if plan_item else "收集并压缩与该子查询相关的上下文"
+                    ),
+                    evidence_targets=plan_item.evidence_targets if plan_item else [],
                     status="completed",
                     analysis=context.context,
                     citations=context.citations,
@@ -216,7 +225,65 @@ class ResearchAgent:
             )
         return sections
 
+    def _sections_from_plan_event(self, data: object) -> list[ResearchSection]:
+        """Build task sections from detailed or legacy plan event payloads."""
+        plan_items = self._plan_items_from_event_data(data)
+        if plan_items:
+            self.plan_items = plan_items
+            return self._plan_items_to_sections(plan_items)
+
+        sub_queries = self._sub_queries_from_event_data(data)
+        if sub_queries:
+            return self._sub_queries_to_sections(sub_queries)
+        return []
+
+    def _plan_items_from_event_data(self, data: object) -> list[ResearchPlanItem]:
+        """Read detailed plan items from a stream event payload."""
+        if not isinstance(data, dict):
+            return []
+        raw_items = data.get("plan_items")
+        if not isinstance(raw_items, list):
+            return []
+        plan_items = []
+        for raw_item in raw_items:
+            if isinstance(raw_item, ResearchPlanItem):
+                plan_items.append(raw_item)
+            elif isinstance(raw_item, dict):
+                plan_items.append(ResearchPlanItem.model_validate(raw_item))
+        return plan_items
+
+    def _sub_queries_from_event_data(self, data: object) -> list[str]:
+        """Read legacy sub-query strings from a stream event payload."""
+        raw_items = data.get("sub_queries", []) if isinstance(data, dict) else data
+        if not isinstance(raw_items, list):
+            return []
+        return [str(item) for item in raw_items]
+
+    def _plan_items_to_sections(
+        self,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[ResearchSection]:
+        """Convert detailed plan items into user-visible research sections."""
+        return [
+            ResearchSection(
+                id=f"subquery-{item.step}",
+                step=item.step,
+                title=item.title,
+                description=item.rationale or "GPT Researcher sub-query",
+                dimension=item.dimension,
+                rationale=item.rationale,
+                tool="research_conductor",
+                search_queries=item.search_queries or [item.title],
+                expected_outcome=(
+                    item.expected_outcome or "收集并压缩与该子查询相关的上下文"
+                ),
+                evidence_targets=item.evidence_targets,
+            )
+            for item in plan_items
+        ]
+
     def _sub_queries_to_sections(self, sub_queries: list[str]) -> list[ResearchSection]:
+        """Convert legacy sub-query strings into user-visible sections."""
         return [
             ResearchSection(
                 id=f"subquery-{index}",
@@ -264,3 +331,10 @@ class ResearchAgent:
             ]
         section.completed_at = utc_now()
         task.touch()
+
+    def _plan_item_for_query(self, query: str) -> ResearchPlanItem | None:
+        """Find the detailed plan item that produced one sub-query."""
+        for item in self.plan_items:
+            if item.title == query:
+                return item
+        return None

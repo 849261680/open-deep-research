@@ -30,7 +30,10 @@ from backend.app.research.conductor import ResearchConductor
 from backend.app.research.retriever import ResearchRetriever
 from backend.app.research.writer import ResearchWriter
 from backend.app.research.source_curator import SourceCurator, _score_source
+from backend.app.research.models import ResearchPlanItem
 from backend.app.research.models import ResearchSource
+from backend.app.research.models import SubQueryContext
+from backend.app.research.query_planner import QueryPlanner
 from backend.app.services.content_extraction_service import ContentExtractionService
 from backend.app.services.deepseek_service import DeepSeekService
 from backend.app.services.evidence_store import EvidenceStore
@@ -126,8 +129,18 @@ class TestResearchConductor:
         async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
             return [source]
 
-        async def fake_plan(**kwargs):  # noqa: ANN003
-            return ["DeepSeek 企业应用案例"]
+        async def fake_plan_detailed(**kwargs):  # noqa: ANN003
+            return [
+                ResearchPlanItem(
+                    step=1,
+                    title="DeepSeek 企业应用案例",
+                    dimension="案例研究",
+                    rationale="验证企业应用场景。",
+                    search_queries=["DeepSeek 企业应用案例"],
+                    expected_outcome="获得企业应用案例。",
+                    evidence_targets=["案例研究"],
+                )
+            ]
 
         async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
             return sources
@@ -144,7 +157,7 @@ class TestResearchConductor:
             }
 
         monkeypatch.setattr(conductor.retriever, "search", fake_search)
-        monkeypatch.setattr(conductor.query_planner, "plan", fake_plan)
+        monkeypatch.setattr(conductor.query_planner, "plan_detailed", fake_plan_detailed)
         monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
         monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
         monkeypatch.setattr(
@@ -179,6 +192,195 @@ class TestResearchConductor:
                 ("task-1",),
             ).fetchone()[0]
         assert evidence_count == 2
+
+    def test_conductor_emits_structured_plan_items(self, monkeypatch):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业趋势"
+                self.max_sub_queries = 1
+                self.max_concurrency = 1
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.sub_queries = []
+                self.context = []
+                self.research_sources = []
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-plan"
+                self.repository = None
+
+        conductor = ResearchConductor(ResearcherStub())
+        plan_item = ResearchPlanItem(
+            step=1,
+            title="AI 产业采用率有哪些最新数据？",
+            dimension="数据趋势",
+            rationale="需要量化判断市场变化。",
+            search_queries=["AI adoption rate 2026 enterprise survey"],
+            expected_outcome="获得企业采用率、样本和时间范围。",
+            evidence_targets=["统计数据", "行业报告"],
+        )
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            return []
+
+        async def fake_plan_detailed(**kwargs):  # noqa: ANN003
+            return [plan_item]
+
+        async def fake_process(step: int, sub_query: str, on_event=None):  # noqa: ANN001
+            return SubQueryContext(step=step, query=sub_query, context="分析")
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.query_planner, "plan_detailed", fake_plan_detailed)
+        monkeypatch.setattr(conductor, "_process_sub_query", fake_process)
+
+        import asyncio
+
+        events = []
+
+        async def collect_event(event):  # noqa: ANN001
+            events.append(event)
+
+        contexts = asyncio.run(conductor.conduct_research(on_event=collect_event))
+        plan_event = next(event for event in events if event["type"] == "plan")
+        step_start = next(event for event in events if event["type"] == "step_start")
+
+        assert contexts[0].query == plan_item.title
+        assert plan_event["data"]["plan_items"][0]["dimension"] == "数据趋势"
+        assert plan_event["data"]["plan_items"][0]["evidence_targets"] == [
+            "统计数据",
+            "行业报告",
+        ]
+        assert step_start["data"]["description"] == "数据趋势：需要量化判断市场变化。"
+        assert step_start["data"]["queries"] == plan_item.search_queries
+
+    def test_process_sub_query_searches_planned_queries(self, monkeypatch):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业趋势"
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-search-strategy"
+                self.repository = None
+                self.plan_items = [
+                    ResearchPlanItem(
+                        step=1,
+                        title="AI 产业采用率有哪些最新数据？",
+                        search_queries=[
+                            "AI adoption rate 2026 enterprise survey",
+                            "AI 企业采用率 调研 2026",
+                        ],
+                    )
+                ]
+
+        conductor = ResearchConductor(ResearcherStub())
+        searched_queries: list[str] = []
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            searched_queries.append(query)
+            return [
+                ResearchSource(
+                    title=f"Source {query}",
+                    link=f"https://example.com/{len(searched_queries)}",
+                    source="web",
+                    query=query,
+                    snippet="snippet",
+                    extracted_content="content",
+                )
+            ]
+
+        async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
+            return sources
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return "压缩后的上下文"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {"passed": True, "score": 1.0, "issues": [], "summary": "ok"}
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        context = asyncio.run(
+            conductor._process_sub_query(
+                1,
+                "AI 产业采用率有哪些最新数据？",
+            )
+        )
+
+        assert searched_queries == [
+            "AI adoption rate 2026 enterprise survey",
+            "AI 企业采用率 调研 2026",
+        ]
+        assert [source.query for source in context.sources] == searched_queries
+
+
+class TestQueryPlanner:
+    def test_plan_detailed_parses_structured_research_strategy(self, monkeypatch):
+        planner = QueryPlanner()
+        initial_results = [
+            ResearchSource(
+                title="AI Market Report",
+                link="https://example.com/report",
+                source="web",
+                query="AI 产业趋势",
+                snippet="报告提到企业采用、成本和风险。",
+            )
+        ]
+
+        async def fake_llm_call(self, prompt: str):  # noqa: ANN001, ARG001
+            return """
+            {
+              "plan_items": [
+                {
+                  "title": "AI 产业采用率有哪些最新数据？",
+                  "dimension": "数据趋势",
+                  "rationale": "需要量化判断市场变化。",
+                  "search_queries": ["AI adoption rate 2026 enterprise survey"],
+                  "expected_outcome": "获得企业采用率、样本和时间范围。",
+                  "evidence_targets": ["统计数据", "行业报告"]
+                }
+              ]
+            }
+            """
+
+        monkeypatch.setattr(planner.llm.__class__, "_acall", fake_llm_call)
+
+        import asyncio
+
+        plan_items = asyncio.run(
+            planner.plan_detailed(
+                query="AI 产业趋势",
+                initial_results=initial_results,
+                max_sub_queries=3,
+            )
+        )
+        legacy_queries = asyncio.run(
+            planner.plan(
+                query="AI 产业趋势",
+                initial_results=initial_results,
+                max_sub_queries=3,
+            )
+        )
+
+        assert plan_items == [
+            ResearchPlanItem(
+                step=1,
+                title="AI 产业采用率有哪些最新数据？",
+                dimension="数据趋势",
+                rationale="需要量化判断市场变化。",
+                search_queries=["AI adoption rate 2026 enterprise survey"],
+                expected_outcome="获得企业采用率、样本和时间范围。",
+                evidence_targets=["统计数据", "行业报告"],
+            )
+        ]
+        assert legacy_queries == ["AI 产业采用率有哪些最新数据？"]
 
 
 class TestResearchWriter:

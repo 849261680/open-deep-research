@@ -45,9 +45,12 @@ class ResearchSection(BaseModel):
     step: int
     title: str
     description: str
+    dimension: str = ""
+    rationale: str = ""
     tool: str = "comprehensive_search"
     search_queries: list[str] = Field(default_factory=list)
     expected_outcome: str = ""
+    evidence_targets: list[str] = Field(default_factory=list)
     status: str = "pending"
     analysis: str = ""
     citations: list[Citation] = Field(default_factory=list)

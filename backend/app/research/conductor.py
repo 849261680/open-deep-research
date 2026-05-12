@@ -8,6 +8,7 @@ from collections.abc import Callable
 from ..services.compression_service import compression_service
 from ..services.verifier_service import verifier_service
 from .context_manager import ResearchContextManager
+from .models import ResearchPlanItem
 from .models import SubQueryContext
 from .query_planner import QueryPlanner
 from .retriever import ResearchRetriever
@@ -45,14 +46,17 @@ class ResearchConductor:
             sources=initial_results,
             message="已完成初始搜索，正在归纳研究线索...",
         )
-        sub_queries = await self.query_planner.plan(
+        plan_items = await self.query_planner.plan_detailed(
             query=self.researcher.query,
             initial_results=initial_results,
             max_sub_queries=self.researcher.max_sub_queries,
         )
+        plan_items = self._ensure_original_query_plan(plan_items)
+        sub_queries = [item.title for item in plan_items]
         if self.researcher.query not in sub_queries:
             sub_queries.append(self.researcher.query)
         self.researcher.sub_queries = sub_queries
+        self.researcher.plan_items = plan_items
 
         await self._emit(
             on_event,
@@ -60,6 +64,7 @@ class ResearchConductor:
             "子查询规划完成",
             {
                 "sub_queries": sub_queries,
+                "plan_items": self._serialize_plan_items(plan_items),
                 "cost_summary": self.researcher.cost_tracker.summary(),
             },
         )
@@ -77,8 +82,8 @@ class ResearchConductor:
                         "query": sub_query,
                         "total": len(sub_queries),
                         "title": sub_query,
-                        "description": "正在搜索相关信息源并提取可用证据。",
-                        "queries": [sub_query],
+                        "description": self._description_for_query(plan_items, sub_query),
+                        "queries": self._search_queries_for_query(plan_items, sub_query),
                         "cost_summary": self.researcher.cost_tracker.summary(),
                     },
                 )
@@ -90,7 +95,7 @@ class ResearchConductor:
                         "step": index,
                         "query": sub_query,
                         "total": len(sub_queries),
-                        "queries": [sub_query],
+                        "queries": self._search_queries_for_query(plan_items, sub_query),
                         "cost_summary": self.researcher.cost_tracker.summary(),
                     },
                 )
@@ -136,13 +141,89 @@ class ResearchConductor:
         self.researcher.research_sources = self.source_curator.curate(all_sources)
         return contexts
 
+    def _ensure_original_query_plan(
+        self,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[ResearchPlanItem]:
+        """Append the original query as a plan item when absent."""
+        titles = {item.title for item in plan_items}
+        if self.researcher.query in titles:
+            return plan_items
+        original_item = ResearchPlanItem(
+            step=len(plan_items) + 1,
+            title=self.researcher.query,
+            dimension="核心问题",
+            rationale="保留原始问题作为主线，确保最终报告直接回答用户问题。",
+            search_queries=[self.researcher.query],
+            expected_outcome="形成对原始问题的直接回答和证据汇总。",
+            evidence_targets=["综合资料", "权威来源"],
+        )
+        return [*plan_items, original_item]
+
+    def _serialize_plan_items(
+        self,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[dict[str, object]]:
+        """Serialize structured plan items for stream events."""
+        return [
+            {
+                "step": item.step,
+                "title": item.title,
+                "dimension": item.dimension,
+                "rationale": item.rationale,
+                "search_queries": item.search_queries,
+                "expected_outcome": item.expected_outcome,
+                "evidence_targets": item.evidence_targets,
+            }
+            for item in plan_items
+        ]
+
+    def _description_for_query(
+        self,
+        plan_items: list[ResearchPlanItem],
+        query: str,
+    ) -> str:
+        """Build a concise user-facing plan description for one query."""
+        item = self._plan_item_for_query(plan_items, query)
+        if item is None:
+            return "正在搜索相关信息源并提取可用证据。"
+        if item.dimension and item.rationale:
+            return f"{item.dimension}：{item.rationale}"
+        return item.rationale or item.dimension or "正在搜索相关信息源并提取可用证据。"
+
+    def _search_queries_for_query(
+        self,
+        plan_items: list[ResearchPlanItem],
+        query: str,
+    ) -> list[str]:
+        """Return planned search queries for one research query."""
+        item = self._plan_item_for_query(plan_items, query)
+        if item is None or not item.search_queries:
+            return [query]
+        return item.search_queries
+
+    def _plan_item_for_query(
+        self,
+        plan_items: list[ResearchPlanItem],
+        query: str,
+    ) -> ResearchPlanItem | None:
+        """Find the structured plan item for one query title."""
+        for item in plan_items:
+            if item.title == query:
+                return item
+        return None
+
     async def _process_sub_query(
         self,
         step: int,
         sub_query: str,
         on_event: ResearchEventCallback | None = None,
     ) -> SubQueryContext:
-        search_results = await self.retriever.search(sub_query)
+        planned_queries = self._search_queries_for_query(
+            getattr(self.researcher, "plan_items", []),
+            sub_query,
+        )
+        search_results = await self._search_planned_queries(planned_queries)
         await self._emit_search_result(
             on_event,
             step=step,
@@ -187,6 +268,22 @@ class ResearchConductor:
             verification=verification,
             context=context,
         )
+
+    async def _search_planned_queries(
+        self,
+        planned_queries: list[str],
+    ) -> list[object]:
+        """Search all planned query variants and dedupe results by link."""
+        results: list[object] = []
+        seen_links: set[str] = set()
+        for query in planned_queries:
+            for source in await self.retriever.search(query):
+                link = str(getattr(source, "link", "")).strip()
+                if not link or link in seen_links:
+                    continue
+                seen_links.add(link)
+                results.append(source)
+        return results
 
     async def _store_evidence(
         self,
