@@ -26,8 +26,48 @@ function AppContent() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const activeRequestControllerRef = useRef(null);
   const activeResearchRef = useRef(null);
+  const currentResearchIdRef = useRef(null);
+  const streamingUpdatesByResearchIdRef = useRef(new Map());
 
   const { currentResearch, addResearch, updateResearch, replaceResearchId, setCurrentResearch } = useHistory();
+
+  useEffect(() => {
+    currentResearchIdRef.current = currentResearch?.id || null;
+  }, [currentResearch?.id]);
+
+  const appendStreamingUpdate = (researchId, update) => {
+    // Keep live progress scoped by task so history navigation does not erase it.
+    const previousUpdates = streamingUpdatesByResearchIdRef.current.get(researchId) || [];
+    const nextUpdates = [...previousUpdates, update];
+    streamingUpdatesByResearchIdRef.current.set(researchId, nextUpdates);
+    if (currentResearchIdRef.current === researchId) {
+      setStreamingData(nextUpdates);
+    }
+  };
+
+  const resetStreamingUpdates = (researchId) => {
+    // Start each run or resume with a clean progress timeline.
+    streamingUpdatesByResearchIdRef.current.set(researchId, []);
+    if (currentResearchIdRef.current === researchId) {
+      setStreamingData([]);
+    }
+  };
+
+  const migrateStreamingUpdates = (oldId, newId) => {
+    // Move cached updates when the backend replaces a temporary client id.
+    const updates = streamingUpdatesByResearchIdRef.current.get(oldId) || [];
+    streamingUpdatesByResearchIdRef.current.delete(oldId);
+    streamingUpdatesByResearchIdRef.current.set(newId, updates);
+    if (currentResearchIdRef.current === oldId) {
+      currentResearchIdRef.current = newId;
+      setStreamingData(updates);
+    }
+  };
+
+  const restoreStreamingUpdates = (researchId) => {
+    // Rehydrate the progress panel when returning to a still-active task.
+    setStreamingData(streamingUpdatesByResearchIdRef.current.get(researchId) || []);
+  };
 
   // 检测移动端
   useEffect(() => {
@@ -114,6 +154,8 @@ function AppContent() {
       status: 'in_progress',
     });
     activeResearchRef.current = research;
+    currentResearchIdRef.current = research.id;
+    resetStreamingUpdates(research.id);
 
     try {
       // 使用流式API
@@ -126,15 +168,19 @@ function AppContent() {
 
         const serverTaskId = normalizedUpdate.data?.task_id || normalizedUpdate.data?.id;
         if (serverTaskId && serverTaskId !== research.id) {
+          migrateStreamingUpdates(research.id, serverTaskId);
           replaceResearchId(research.id, serverTaskId);
           research.id = serverTaskId;
           research.isTemporaryId = false;
           activeResearchRef.current = research;
         }
+        appendStreamingUpdate(research.id, normalizedUpdate);
 
         // 如果研究完成，设置最终数据
         if (normalizedUpdate.type === 'report_complete') {
-          setResearchData(normalizedUpdate.data);
+          if (currentResearchIdRef.current === research.id) {
+            setResearchData(normalizedUpdate.data);
+          }
           // 更新历史记录
           updateResearch(research.id, {
             result: normalizedUpdate.data,
@@ -142,7 +188,9 @@ function AppContent() {
           });
           activeResearchRef.current = null;
         } else if (normalizedUpdate.type === 'error') {
-          setError(normalizedUpdate.message);
+          if (currentResearchIdRef.current === research.id) {
+            setError(normalizedUpdate.message);
+          }
           updateResearch(research.id, {
             status: 'failed',
             error: normalizedUpdate.message,
@@ -216,6 +264,8 @@ function AppContent() {
     setResearchData(null);
     setStreamingData([]);
     setCurrentResearch(research);
+    currentResearchIdRef.current = research.id;
+    resetStreamingUpdates(research.id);
 
     try {
       await researchAPI.resumeResearchStream(research.id, (update) => {
@@ -223,10 +273,12 @@ function AppContent() {
           ...update,
           timestamp: update.timestamp || new Date().toISOString(),
         };
-        setStreamingData((prev) => [...prev, normalizedUpdate]);
+        appendStreamingUpdate(research.id, normalizedUpdate);
 
         if (normalizedUpdate.type === 'report_complete') {
-          setResearchData(normalizedUpdate.data);
+          if (currentResearchIdRef.current === research.id) {
+            setResearchData(normalizedUpdate.data);
+          }
           updateResearch(research.id, {
             result: normalizedUpdate.data,
             status: 'completed',
@@ -234,7 +286,9 @@ function AppContent() {
           });
           activeResearchRef.current = null;
         } else if (normalizedUpdate.type === 'error') {
-          setError(normalizedUpdate.message);
+          if (currentResearchIdRef.current === research.id) {
+            setError(normalizedUpdate.message);
+          }
           updateResearch(research.id, {
             status: 'failed',
             error: normalizedUpdate.message,
@@ -304,6 +358,7 @@ function AppContent() {
         // restore the streaming view instead of bailing out with stale report UI.
         setError(null);
         setResearchData(null);
+        restoreStreamingUpdates(currentResearch.id);
         setIsResearching(true);
         if (isMobile) {
           setSidebarOpen(false);
