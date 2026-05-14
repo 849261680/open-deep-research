@@ -24,6 +24,15 @@ fi
 
 PORT="${PORT:-3003}"
 HOST="${HOST:-0.0.0.0}"
+FAST_REFRESH="${FAST_REFRESH:-true}"
+WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}"
+CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-false}"
 
 echo "✅ 前端即将运行在 http://localhost:${PORT}"
-HOST="$HOST" PORT="$PORT" exec npm start
+echo "♻️  前端热重载已启用，监听 frontend/src"
+HOST="$HOST" \
+PORT="$PORT" \
+FAST_REFRESH="$FAST_REFRESH" \
+WATCHPACK_POLLING="$WATCHPACK_POLLING" \
+CHOKIDAR_USEPOLLING="$CHOKIDAR_USEPOLLING" \
+exec npm start

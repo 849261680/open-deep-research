@@ -38,7 +38,11 @@ echo "🔧 启动后端服务..."
 uv sync --group dev
 
 # 后台启动后端
-uv run python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8003 &
+uv run python -m uvicorn backend.app.main:app \
+  --reload \
+  --reload-dir backend/app \
+  --host 0.0.0.0 \
+  --port 8003 &
 BACKEND_PID=$!
 echo "✅ 后端服务已启动 (PID: $BACKEND_PID)"
 
@@ -51,7 +55,12 @@ cd "$ROOT_DIR/frontend"
 npm install
 
 # 启动前端
-HOST=0.0.0.0 PORT=3003 npm start &
+HOST=0.0.0.0 \
+PORT=3003 \
+FAST_REFRESH="${FAST_REFRESH:-true}" \
+WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}" \
+CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-false}" \
+npm start &
 FRONTEND_PID=$!
 echo "✅ 前端服务已启动 (PID: $FRONTEND_PID)"
 

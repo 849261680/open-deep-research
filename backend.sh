@@ -25,4 +25,9 @@ HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8003}"
 
 echo "✅ 后端即将运行在 http://localhost:${PORT}"
-exec uv run python -m uvicorn backend.app.main:app --reload --host "$HOST" --port "$PORT"
+echo "♻️  后端热重载已启用，监听 backend/app"
+exec uv run python -m uvicorn backend.app.main:app \
+  --reload \
+  --reload-dir backend/app \
+  --host "$HOST" \
+  --port "$PORT"
