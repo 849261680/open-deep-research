@@ -1,3 +1,5 @@
+"""Run and translate the multi-step research workflow."""
+
 from __future__ import annotations
 
 import asyncio
@@ -34,6 +36,7 @@ class ResearchAgent:
         max_concurrency: int = 3,
         config: ResearchConfig | None = None,
     ) -> None:
+        """Create one agent instance for a single research query."""
         resolved_config = config or self._config_from_defaults(
             max_sub_queries=max_sub_queries,
             max_concurrency=max_concurrency,
@@ -71,9 +74,11 @@ class ResearchAgent:
         return config.model_copy(update=updates) if updates else config
 
     async def run(self, task: ResearchTask) -> AsyncGenerator[dict[str, object], None]:
+        """Stream planning, research progress, cost, and final report events."""
         event_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         async def collect_event(event: dict[str, object]) -> None:
+            """Bridge conductor callbacks into the run loop queue."""
             await event_queue.put(event)
 
         self.task_id = task.id
@@ -83,37 +88,11 @@ class ResearchAgent:
         )
         try:
             while True:
-                try:
-                    event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
-                except TimeoutError:
-                    if conduct_task.done():
-                        break
-                    continue
-                if event["type"] == "plan":
-                    sections = self._sections_from_plan_event(event.get("data", {}))
-                    if sections:
-                        task.sections = sections
-                        task.status = ResearchTaskStatus.RESEARCHING
-                        task.touch()
-                        yield {
-                            "type": "plan",
-                            "message": str(event["message"]),
-                            "data": [section.model_dump() for section in task.sections],
-                        }
-                        yield {
-                            "type": "cost_update",
-                            "message": "成本统计已更新",
-                            "data": self.cost_tracker.summary(),
-                        }
-                    else:
-                        yield event
-                elif event["type"] == "step_complete":
-                    event_data = event.get("data")
-                    if isinstance(event_data, dict):
-                        self._apply_step_complete(task, event_data)
-                    yield event
-                else:
-                    yield event
+                event = await self._next_conductor_event(event_queue, conduct_task)
+                if event is None:
+                    break
+                for update in self._updates_from_stream_event(task, event):
+                    yield update
 
             contexts = await conduct_task
             task.sections = self._contexts_to_sections(contexts)
@@ -194,6 +173,7 @@ class ResearchAgent:
     def _contexts_to_sections(
         self, contexts: list[SubQueryContext]
     ) -> list[ResearchSection]:
+        """Convert finished context objects into persisted report sections."""
         sections: list[ResearchSection] = []
         for context in contexts:
             plan_item = self._plan_item_for_query(context.query)
@@ -315,6 +295,7 @@ class ResearchAgent:
         ]
 
     def _apply_step_complete(self, task: ResearchTask, event_data: dict[str, object]) -> None:
+        """Merge one completed research step into the matching task section."""
         step = event_data.get("step")
         if not isinstance(step, int):
             return
@@ -374,6 +355,66 @@ class ResearchAgent:
             if item.title == query:
                 return item
         return None
+
+    async def _next_conductor_event(
+        self,
+        event_queue: asyncio.Queue[dict[str, object]],
+        conduct_task: asyncio.Task[list[SubQueryContext]],
+    ) -> dict[str, object] | None:
+        """Read the next conductor event or stop once the conductor is done."""
+        try:
+            return await asyncio.wait_for(event_queue.get(), timeout=0.1)
+        except TimeoutError:
+            return None if conduct_task.done() else {}
+
+    def _updates_from_stream_event(
+        self,
+        task: ResearchTask,
+        event: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Translate a conductor event into API stream updates."""
+        if event == {}:
+            return []
+        if event["type"] == "plan":
+            return self._updates_from_plan_event(task, event)
+        if event["type"] == "step_complete":
+            self._apply_step_event(task, event)
+        return [event]
+
+    def _updates_from_plan_event(
+        self,
+        task: ResearchTask,
+        event: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Translate a plan event into plan and cost updates."""
+        sections = self._sections_from_plan_event(event.get("data", {}))
+        if not sections:
+            return [event]
+        task.sections = sections
+        task.status = ResearchTaskStatus.RESEARCHING
+        task.touch()
+        return [
+            {
+                "type": "plan",
+                "message": str(event["message"]),
+                "data": [section.model_dump() for section in task.sections],
+            },
+            {
+                "type": "cost_update",
+                "message": "成本统计已更新",
+                "data": self.cost_tracker.summary(),
+            },
+        ]
+
+    def _apply_step_event(
+        self,
+        task: ResearchTask,
+        event: dict[str, object],
+    ) -> None:
+        """Apply step-complete payloads when the payload shape is valid."""
+        event_data = event.get("data")
+        if isinstance(event_data, dict):
+            self._apply_step_complete(task, event_data)
 
     def _log_report_complete(
         self,

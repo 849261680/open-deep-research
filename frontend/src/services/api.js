@@ -4,12 +4,24 @@ import errorHandler from './errorHandler';
 const GUEST_ID_STORAGE_KEY = 'research-guest-id';
 const STREAM_INACTIVITY_TIMEOUT_MS = 600000;
 
-// API基础配置 - 优先使用生产环境配置，然后是本地配置
-const API_BASE_URL = process.env.REACT_APP_API_URL ||
-                    (window.location.hostname === 'localhost' ? 'http://localhost:8003' :
-                     window.location.origin.includes('railway.app') ?
-                     `${window.location.protocol}//${window.location.hostname}` :
-                     'http://localhost:8003');
+// 解析 API 地址，避免生产环境静默回退到访问者本机。
+const resolveApiBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  if (window.location.hostname === 'localhost') {
+    return 'http://localhost:8003';
+  }
+  if (window.location.hostname === '127.0.0.1') {
+    return 'http://127.0.0.1:8003';
+  }
+  if (window.location.origin.includes('railway.app')) {
+    return `${window.location.protocol}//${window.location.hostname}`;
+  }
+  return window.location.origin;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export const getGuestId = () => {
   const existingGuestId = localStorage.getItem(GUEST_ID_STORAGE_KEY);

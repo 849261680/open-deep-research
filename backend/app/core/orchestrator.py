@@ -1,3 +1,5 @@
+"""Coordinate research task persistence and agent streaming."""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +18,7 @@ class ResearchOrchestrator:
     """Thin persistence and API orchestration layer for ResearchAgent."""
 
     def __init__(self) -> None:
+        """Create the repository-backed orchestrator state."""
         self.repository = ResearchRepository()
         self._active_tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -26,6 +29,7 @@ class ResearchOrchestrator:
         guest_id: str | None = None,
         config: ResearchConfig | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
+        """Create and stream a new research task."""
         task = ResearchTask(
             id=str(uuid4()),
             user_id=user_id,
@@ -54,6 +58,7 @@ class ResearchOrchestrator:
     async def run_task(
         self, task: ResearchTask, config: ResearchConfig | None = None
     ) -> AsyncGenerator[dict[str, object], None]:
+        """Run an existing task and persist stream progress."""
         research_agent = ResearchAgent(
             query=task.query,
             repository=self.repository,
@@ -62,6 +67,7 @@ class ResearchOrchestrator:
         update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
         async def produce_updates() -> None:
+            """Forward agent updates into a queue owned by the orchestrator."""
             try:
                 async for update in research_agent.run(task):
                     await update_queue.put({"type": "update", "data": update})
@@ -82,10 +88,7 @@ class ResearchOrchestrator:
 
                 if event_type == "update":
                     update = queued["data"]
-                    if isinstance(update, dict):
-                        task.touch()
-                        self.repository.save_task(task)
-                        yield update
+                    yield self._persist_stream_update(task, update)
                     continue
 
                 if event_type == "exception":
@@ -94,16 +97,14 @@ class ResearchOrchestrator:
 
                 if event_type == "cancelled":
                     self._mark_stopped(task)
-                    with suppress(asyncio.CancelledError):
-                        await runner
+                    await self._await_cancelled(runner)
                     return
 
                 if event_type == "done":
                     return
         except asyncio.CancelledError:
             runner.cancel()
-            with suppress(asyncio.CancelledError):
-                await runner
+            await self._await_cancelled(runner)
             self._mark_stopped(task)
             raise
         except Exception as exc:  # noqa: BLE001
@@ -121,6 +122,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
     ) -> list[dict[str, object]]:
+        """Load research task summaries for one owner scope."""
         return self.repository.load_tasks(user_id=user_id, guest_id=guest_id)
 
     def get_task(
@@ -129,6 +131,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
     ) -> dict[str, object] | None:
+        """Load one task payload if it belongs to the owner scope."""
         return self.repository.load_task_payload(
             task_id,
             user_id=user_id,
@@ -141,6 +144,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
+        """Restart an unfinished task from its saved query."""
         task = self.repository.load_task(task_id, user_id=user_id, guest_id=guest_id)
         if task is None:
             yield self._event("error", f"任务不存在: {task_id}", None)
@@ -163,6 +167,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
     ) -> int:
+        """Clear saved tasks and cancel active work in the owner scope."""
         if user_id is None:
             if guest_id is not None:
                 return self.repository.clear(guest_id=guest_id)
@@ -190,6 +195,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
     ) -> dict[str, object] | None:
+        """Cancel active work and mark one task as stopped."""
         task = self.repository.load_task(task_id, user_id=user_id, guest_id=guest_id)
         if task is None:
             return None
@@ -202,9 +208,26 @@ class ResearchOrchestrator:
         return task.model_dump()
 
     def _event(self, event_type: str, message: str, data: object) -> dict[str, object]:
+        """Build one API stream event."""
         return {"type": event_type, "message": message, "data": data}
 
+    def _persist_stream_update(
+        self, task: ResearchTask, update: object
+    ) -> dict[str, object]:
+        """Persist task freshness when the queued update is streamable."""
+        if not isinstance(update, dict):
+            raise TypeError("ResearchAgent emitted a non-dict update")
+        task.touch()
+        self.repository.save_task(task)
+        return update
+
+    async def _await_cancelled(self, runner: asyncio.Task[None]) -> None:
+        """Wait for a cancelled runner without leaking cancellation."""
+        with suppress(asyncio.CancelledError):
+            await runner
+
     def _mark_stopped(self, task: ResearchTask) -> None:
+        """Persist a task as stopped by the user or cancellation."""
         task.status = ResearchTaskStatus.FAILED
         task.error = "研究已停止"
         task.touch()

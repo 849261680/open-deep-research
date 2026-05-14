@@ -1,3 +1,5 @@
+"""DeepSeek chat-completion client used by research services."""
+
 import asyncio
 import logging
 import os
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _env_int(name: str, default: int) -> int:
+    """Read an integer environment variable with a safe default."""
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -29,6 +32,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _env_float(name: str, default: float) -> float:
+    """Read a float environment variable with a safe default."""
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -41,6 +45,8 @@ def _env_float(name: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class DeepSeekConfig:
+    """Runtime limits and model settings for DeepSeek calls."""
+
     model: str
     temperature: float
     max_output_tokens: int
@@ -48,6 +54,7 @@ class DeepSeekConfig:
 
     @classmethod
     def from_env(cls) -> "DeepSeekConfig":
+        """Build DeepSeek settings from environment variables."""
         return cls(
             model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
             temperature=_env_float("DEEPSEEK_TEMPERATURE", 0.7),
@@ -57,7 +64,10 @@ class DeepSeekConfig:
 
 
 class DeepSeekService:
+    """Small HTTP client wrapper around DeepSeek chat completions."""
+
     def __init__(self, config: DeepSeekConfig | None = None) -> None:
+        """Create a DeepSeek client using env credentials."""
         self.config = config or DeepSeekConfig.from_env()
         self.api_key = os.getenv("DEEPSEEK_API_KEY")
         self.base_url = "https://api.deepseek.com/v1"
@@ -75,6 +85,7 @@ class DeepSeekService:
         model: str | None = None,
         temperature: float | None = None,
     ) -> dict[str, object]:
+        """Build the request payload accepted by DeepSeek chat completions."""
         requested_max_tokens = max_tokens or self.config.max_output_tokens
         return {
             "model": model or self.config.model,
@@ -87,6 +98,7 @@ class DeepSeekService:
         }
 
     def _truncate_prompt(self, prompt: str) -> str:
+        """Limit prompts before sending them to the provider."""
         if self.config.max_prompt_chars <= 0:
             return prompt
         if len(prompt) > self.config.max_prompt_chars:
@@ -132,17 +144,12 @@ class DeepSeekService:
                 elapsed = time.time() - start_time
                 logger.debug("API 响应时间: %.2f 秒，状态码: %d", elapsed, response.status_code)
 
-                if response.status_code != 200:
-                    logger.error("API 错误响应: %s", response.text)
-                    if attempt == max_retries:
-                        break
-                    time.sleep(2)
-                    continue
+                if response.status_code == 200:
+                    return self._response_content(response)
 
-                result = response.json()
-                response_content = result["choices"][0]["message"]["content"]
-                logger.debug("API 调用成功，响应长度: %d 字符", len(response_content))
-                return response_content
+                if self._retry_error_response(response, attempt, max_retries):
+                    continue
+                break
             except Timeout:
                 if attempt == max_retries:
                     logger.error("API 请求超时，已重试多次")
@@ -160,6 +167,26 @@ class DeepSeekService:
             raise RuntimeError("DeepSeek API request failed before receiving a response")
 
         raise Exception(f"DeepSeek API error: {response.status_code} - {response.text}")
+
+    def _response_content(self, response: requests.Response) -> str:
+        """Extract the assistant message content from a successful response."""
+        result = response.json()
+        response_content = result["choices"][0]["message"]["content"]
+        logger.debug("API 调用成功，响应长度: %d 字符", len(response_content))
+        return str(response_content)
+
+    def _retry_error_response(
+        self,
+        response: requests.Response,
+        attempt: int,
+        max_retries: int,
+    ) -> bool:
+        """Log an error response and sleep when another retry is available."""
+        logger.error("API 错误响应: %s", response.text)
+        if attempt >= max_retries:
+            return False
+        time.sleep(2)
+        return True
 
     async def generate_response(
         self,
@@ -200,6 +227,7 @@ class DeepSeekService:
         )
 
         def _stream_lines() -> list[str]:
+            """Collect streaming response lines inside a worker thread."""
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=cast(Any, self.headers),
