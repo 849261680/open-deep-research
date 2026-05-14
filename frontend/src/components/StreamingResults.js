@@ -6,6 +6,8 @@ import {
   CheckCircle,
   AlertCircle,
   Zap,
+  GitBranch,
+  DollarSign,
 } from 'lucide-react';
 
 const StreamingResults = ({ updates }) => {
@@ -45,7 +47,9 @@ const StreamingResults = ({ updates }) => {
       case 'step_start': case 'step_retry': case 'search_progress': return Search;
       case 'search_result': return CheckCircle;
       case 'analysis_progress': return Brain;
+      case 'deep_research_decision': return GitBranch;
       case 'step_complete': return CheckCircle;
+      case 'cost_update': return DollarSign;
       case 'report_generating': return FileText;
       case 'report_complete': return CheckCircle;
       case 'error': case 'stopped': return AlertCircle;
@@ -58,10 +62,13 @@ const StreamingResults = ({ updates }) => {
       case 'task_created':
         return { iconColor: '#637061', bg: '#F5F8F2', dot: '#637061' };
       case 'planning': case 'planning_step': case 'step_start': case 'step_retry':
-      case 'search_progress': case 'analysis_progress': case 'report_generating':
+      case 'search_progress': case 'analysis_progress': case 'deep_research_decision':
+      case 'report_generating':
         return { iconColor: '#163300', bg: 'rgba(159,232,112,0.12)', dot: '#9fe870' };
       case 'plan': case 'search_result': case 'step_complete': case 'report_complete':
         return { iconColor: '#054d28', bg: '#e2f6d5', dot: '#054d28' };
+      case 'cost_update':
+        return { iconColor: '#454745', bg: '#F5F8F2', dot: '#454745' };
       case 'error': case 'stopped':
         return { iconColor: '#d03238', bg: '#FDECEA', dot: '#d03238' };
       default:
@@ -77,7 +84,8 @@ const StreamingResults = ({ updates }) => {
       case 'task_created': return '任务已创建';
       case 'planning': case 'planning_step': case 'plan': return '规划研究路径中...';
       case 'step_start': case 'step_retry': case 'search_progress': case 'search_result': return '检索信息中...';
-      case 'analysis_progress': case 'step_complete': return '分析整理中...';
+      case 'analysis_progress': case 'deep_research_decision': case 'step_complete': return '分析整理中...';
+      case 'cost_update': return '更新成本统计中...';
       case 'report_generating': return '生成报告中...';
       case 'report_complete': return '报告已生成';
       case 'error': return '研究过程中出现问题';
@@ -95,6 +103,8 @@ const StreamingResults = ({ updates }) => {
     let latestPlanningMessage = null;
     let latestActiveQuery = null;
     let latestCompletedQuery = null;
+    let latestDeepDecision = null;
+    let latestCostSummary = null;
     let phase = 'planning';
     let statusType = latestUpdate?.type || 'planning';
     let timestamp = getUpdateTimestamp(latestUpdate);
@@ -127,11 +137,19 @@ const StreamingResults = ({ updates }) => {
           if (typeof update.data?.total === 'number') totalSteps = Math.max(totalSteps, update.data.total);
           if (typeof update.data?.step === 'number') activeQueries.set(update.data.step, update.data.query || update.message);
           latestActiveQuery = update.data?.query || update.message; break;
+        case 'deep_research_decision':
+          phase = 'deepening'; statusType = 'deep_research_decision';
+          if (typeof update.data?.step === 'number' && update.data?.should_continue !== true) activeQueries.delete(update.data.step);
+          latestDeepDecision = update.data || {};
+          break;
         case 'step_complete':
           phase = 'researching'; statusType = 'search_progress';
           if (typeof update.data?.step === 'number') { activeQueries.delete(update.data.step); completedSteps.add(update.data.step); }
           if (completedSteps.size > totalSteps) totalSteps = completedSteps.size;
           latestCompletedQuery = update.data?.title || update.message; break;
+        case 'cost_update':
+          latestCostSummary = update.data || {};
+          break;
         case 'report_generating': phase = 'reporting'; statusType = 'report_generating'; break;
         case 'report_complete': phase = 'completed'; statusType = 'report_complete'; break;
         case 'error': phase = 'error'; statusType = 'error'; break;
@@ -157,12 +175,26 @@ const StreamingResults = ({ updates }) => {
         if (activeCount > 0) title = activeCount > 1 ? `正在并行研究 ${activeCount} 个子查询` : '正在研究子查询';
         else if (totalSteps > 0 && completedCount === totalSteps) title = '子查询已全部完成，等待汇总';
         else if (latestCompletedQuery) title = '正在继续推进剩余子查询';
-        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery };
+        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery, costSummary: latestCostSummary };
+      }
+      case 'deepening': {
+        const followUps = Array.isArray(latestDeepDecision?.follow_up_queries) ? latestDeepDecision.follow_up_queries : [];
+        const shouldContinue = latestDeepDecision?.should_continue === true;
+        return {
+          type: statusType,
+          timestamp,
+          title: shouldContinue ? '发现证据缺口，继续深挖' : '深挖判断已完成',
+          detail: recursionText(latestDeepDecision) || latestDeepDecision?.reason || '正在判断是否需要继续递归研究。',
+          activeItems: followUps.slice(0, 3),
+          extra: followUps.length > 3 ? `还有 ${followUps.length - 3} 个后续追问` : null,
+          lastCompleted: latestDeepDecision?.reason,
+          costSummary: latestCostSummary,
+        };
       }
       case 'reporting':
-        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery };
+        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery, costSummary: latestCostSummary };
       case 'completed':
-        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [] };
+        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [], costSummary: latestCostSummary };
       case 'error':
         return { type: statusType, timestamp, title: latestUpdate?.message || '研究过程中出现问题', detail: '系统已停止当前流程，请检查错误信息。', activeItems: [] };
       case 'stopped':
@@ -179,6 +211,28 @@ const StreamingResults = ({ updates }) => {
   const getHostname = (link) => {
     if (!link) return '';
     try { return new URL(link).hostname.replace(/^www\./, ''); } catch { return ''; }
+  };
+
+  // Build the compact depth and parent label shared by status and log rows.
+  function recursionText(data) {
+    if (!data) return '';
+    const parts = [];
+    if (typeof data.depth === 'number') parts.push(`深度 ${data.depth}`);
+    if (data.parent_query) parts.push(`来源：${data.parent_query}`);
+    return parts.join(' · ');
+  }
+
+  // Format cost telemetry without hiding either token usage or dollar cost.
+  const formatCostSummary = (summary) => {
+    if (!summary) return null;
+    const parts = [];
+    if (typeof summary.total_tokens === 'number') {
+      parts.push(`${summary.total_tokens.toLocaleString()} tokens`);
+    }
+    if (typeof summary.estimated_cost_usd === 'number') {
+      parts.push(`$${summary.estimated_cost_usd.toFixed(4)}`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : null;
   };
 
   const renderPills = (items, options = {}) => {
@@ -273,9 +327,11 @@ const StreamingResults = ({ updates }) => {
 
       case 'step_start': case 'step_retry': {
         const stepQueries = update.data?.queries || (update.data?.query ? [update.data.query] : []);
+        const recursion = recursionText(update.data);
         return (
           <div className="mt-2 pl-3 border-l-2" style={{ borderColor: '#E2E5DE' }}>
             <p className="text-xs font-semibold text-text-primary">{update.data.title}</p>
+            {recursion && <p className="text-xs text-text-tertiary mt-0.5 font-normal">{recursion}</p>}
             {update.type === 'step_retry' ? (
               <p className="text-xs text-text-tertiary mt-0.5 font-normal">第 {update.data.retry_count} 次重试</p>
             ) : update.data.description && (
@@ -290,8 +346,10 @@ const StreamingResults = ({ updates }) => {
         const analysisQueries = update.data?.queries || (update.data?.query ? [update.data.query] : []);
         const analysisSources = update.data?.sources || [];
         const analysisDomains = update.data?.domains || analysisSources.map((s) => s.domain || getHostname(s.link)).filter(Boolean);
+        const recursion = recursionText(update.data);
         return (
           <div className="mt-2 pl-3 border-l-2" style={{ borderColor: '#E2E5DE' }}>
+            {recursion && <p className="text-xs text-text-tertiary font-normal">{recursion}</p>}
             <p className="text-xs text-text-tertiary font-normal">已读取 {update.data?.read_count || analysisSources.length || 0} 个来源，正在整理证据和结论。</p>
             {analysisQueries.length > 0 && renderPills(analysisQueries, { keyPrefix: 'aq' })}
             {analysisDomains.length > 0 && renderPills(analysisDomains, { keyPrefix: 'ad', limit: 6 })}
@@ -299,10 +357,29 @@ const StreamingResults = ({ updates }) => {
         );
       }
 
+      case 'deep_research_decision': {
+        const evidenceGaps = update.data?.evidence_gaps || [];
+        const followUpQueries = update.data?.follow_up_queries || [];
+        const recursion = recursionText(update.data);
+        return (
+          <div className="mt-2 pl-3 border-l-2" style={{ borderColor: '#E2E5DE' }}>
+            {recursion && <p className="text-xs text-text-tertiary font-normal">{recursion}</p>}
+            {update.data.reason && <p className="mt-1 text-xs text-text-secondary font-normal">{update.data.reason}</p>}
+            {evidenceGaps.length > 0 && <><p className="mt-2 text-xs text-text-tertiary font-medium">证据缺口</p>{renderPills(evidenceGaps, { keyPrefix: 'gap' })}</>}
+            {followUpQueries.length > 0 && <><p className="mt-2 text-xs text-text-tertiary font-medium">后续追问</p>{renderPills(followUpQueries, { keyPrefix: 'follow' })}</>}
+            {!update.data.should_continue && update.data.stop_condition && (
+              <p className="mt-2 text-xs text-text-tertiary font-normal">停止条件：{update.data.stop_condition}</p>
+            )}
+          </div>
+        );
+      }
+
       case 'step_complete':
+        const recursion = recursionText(update.data);
         return (
           <div className="mt-2 p-3 rounded-xl" style={{ background: '#e2f6d5' }}>
             <p className="text-xs font-semibold text-text-primary">{update.data.title}</p>
+            {recursion && <p className="text-xs text-text-tertiary mt-1 font-normal">{recursion}</p>}
             {update.data.search_sources?.length > 0 && (
               <p className="text-xs text-text-secondary mt-1 font-normal">检索了 {update.data.search_sources.length} 个信息源</p>
             )}
@@ -311,6 +388,17 @@ const StreamingResults = ({ updates }) => {
             )}
           </div>
         );
+
+      case 'cost_update': {
+        const costSummary = formatCostSummary(update.data);
+        if (!costSummary) return null;
+        return (
+          <div className="mt-2 pl-3 border-l-2" style={{ borderColor: '#E2E5DE' }}>
+            <p className="text-xs text-text-tertiary font-medium">成本统计</p>
+            {renderPills(costSummary.split(' · '), { keyPrefix: 'cost' })}
+          </div>
+        );
+      }
 
       default: return null;
     }
@@ -360,7 +448,9 @@ const StreamingResults = ({ updates }) => {
       {currentStatus && (
         <div className="px-6 py-4 border-b border-border-light">
           <div
-            className="rounded-xl px-5 py-4"
+            key={`${currentStatus.type}-${currentStatus.title}`}
+            data-testid="current-status-card"
+            className="rounded-xl px-5 py-4 animate-fade-in transition-all duration-slow"
             style={{ background: currentStatusStyle.bg }}
           >
             <div className="flex items-start gap-3">
@@ -387,6 +477,9 @@ const StreamingResults = ({ updates }) => {
                 )}
                 {currentStatus.lastCompleted && (
                   <p className="mt-2 text-xs text-text-tertiary line-clamp-1 font-normal">最近完成: {currentStatus.lastCompleted}</p>
+                )}
+                {formatCostSummary(currentStatus.costSummary) && (
+                  <p className="mt-2 text-xs text-text-tertiary font-normal">成本：{formatCostSummary(currentStatus.costSummary)}</p>
                 )}
               </div>
             </div>
