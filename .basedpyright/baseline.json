@@ -122,24 +122,6 @@
                 }
             }
         ],
-        "./backend/app/core/observability.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 23,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./backend/app/core/orchestrator.py": [
             {
                 "code": "reportArgumentType",

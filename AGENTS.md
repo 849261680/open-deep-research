@@ -1,5 +1,5 @@
-# 本地可观测性栈
-- 当你需要程序的报错信息和性能信息时，请阅读docs/OBSERVABILITY.md。
+# 本地日志
+- 当你需要程序的报错信息和性能信息时，请阅读 docs/LOGGING.md，并优先检查后端终端日志或 `logs/backend.log`。
 
 # 开发规则
 

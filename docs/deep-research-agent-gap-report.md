@@ -88,7 +88,7 @@ GPT Researcher 的核心架构是 planner、execution agents、publisher：plann
 
 5. 前端有过程可见性。`StreamingResults.js` 已展示 planning、search_result、analysis_progress、deep_research_decision、cost_update、report_complete 等事件。
 
-6. 有本地可观测性入口。`docs/OBSERVABILITY.md`、Prometheus/Loki/Tempo、`/api/observability/promql` 和 `/api/observability/logql` 对调试长流程有价值。
+6. 有本地日志入口。`docs/LOGGING.md` 和 `backend.http` 请求日志能支持基础报错与耗时排查。
 
 ### 主要差距
 
