@@ -74,6 +74,57 @@ test('renders structured research plan fields in the process tab', () => {
   expect(screen.getByText('补足分行业样本或达到最大深度')).toBeInTheDocument();
 });
 
+test('renders deep plan steps with readable hierarchy and no empty internals', () => {
+  render(
+    <ResearchResults
+      data={{
+        ...resultData,
+        plan: [
+          {
+            step: 6,
+            title: '量子计算的最新发展和应用场景',
+            description: '保留原始问题为主线。',
+            search_queries: ['量子计算的最新发展和应用场景'],
+            expected_outcome: '形成直接回答。',
+            evidence_targets: [],
+            depth: 1,
+          },
+          {
+            step: 101,
+            title: '2024-2026年日本、韩国、英国量子计算国家战略',
+            description: 'GPT Researcher sub-query',
+            search_queries: ['2024-2026年日本、韩国、英国量子计算国家战略、预算拨款及技术路线图'],
+            expected_outcome: '收集并压缩与该子查询相关的上下文',
+            evidence_targets: [],
+            depth: 2,
+            parent_query: '量子计算的最新发展和应用场景',
+          },
+          {
+            step: 102,
+            title: '全球主要国家量子计算投资规模与效果对比',
+            description: 'GPT Researcher sub-query',
+            search_queries: ['全球主要国家量子计算投资规模与效果对比（含企业数量、专利、量子比特指标）'],
+            expected_outcome: '收集并压缩与该子查询相关的上下文',
+            evidence_targets: [],
+            depth: 2,
+            parent_query: '量子计算的最新发展和应用场景',
+          },
+        ],
+      }}
+    />
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: /研究过程/ }));
+
+  expect(screen.getByText('6')).toBeInTheDocument();
+  expect(screen.getByText('6.1')).toBeInTheDocument();
+  expect(screen.getByText('6.2')).toBeInTheDocument();
+  expect(screen.getAllByText('深挖查询')).toHaveLength(2);
+  expect(screen.getAllByText('来自：量子计算的最新发展和应用场景')).toHaveLength(2);
+  expect(screen.queryByText('GPT Researcher sub-query')).not.toBeInTheDocument();
+  expect(screen.queryByText('证据目标')).not.toBeInTheDocument();
+});
+
 test('renders markdown pipe tables as actual tables', () => {
   render(
     <ResearchResults

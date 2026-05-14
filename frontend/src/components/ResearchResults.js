@@ -59,6 +59,58 @@ const getCitationDomains = (citations) => {
 };
 
 const getPlanList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+const INTERNAL_PLAN_DESCRIPTIONS = new Set(['GPT Researcher sub-query']);
+
+const isInternalPlanText = (value) => INTERNAL_PLAN_DESCRIPTIONS.has(safeTrim(value));
+
+const getPlanDescription = (step) => {
+  const rationale = safeTrim(step?.rationale);
+  if (rationale && !isInternalPlanText(rationale)) return rationale;
+  const description = safeTrim(step?.description);
+  if (description && !isInternalPlanText(description)) return description;
+  return '';
+};
+
+const buildPlanDisplayItems = (plan) => {
+  const items = Array.isArray(plan) ? plan : [];
+  const titleToLabel = new Map();
+  const childCounts = new Map();
+
+  items.forEach((step, index) => {
+    if (Number(step?.depth || 1) > 1) return;
+    const label = String(step?.step || index + 1);
+    titleToLabel.set(step?.title, label);
+  });
+
+  return items.map((step, index) => {
+    const depth = Number(step?.depth || 1);
+    if (depth <= 1) {
+      return { ...step, displayStep: String(step?.step || index + 1), isDeepStep: false };
+    }
+
+    const parentLabel = titleToLabel.get(step.parent_query) || deriveParentLabel(step.step);
+    const nextChildIndex = (childCounts.get(parentLabel) || 0) + 1;
+    childCounts.set(parentLabel, nextChildIndex);
+    const childLabel = deriveChildLabel(step.step) || nextChildIndex;
+    return {
+      ...step,
+      displayStep: `${parentLabel}.${childLabel}`,
+      isDeepStep: true,
+      parentLabel,
+    };
+  });
+};
+
+const deriveParentLabel = (step) => {
+  if (typeof step !== 'number' || step < 100) return '深挖';
+  return String(Math.floor(step / 100));
+};
+
+const deriveChildLabel = (step) => {
+  if (typeof step !== 'number' || step < 100) return null;
+  const child = step % 100;
+  return child > 0 ? child : null;
+};
 
 const DomainBadge = ({ domain, compact = false }) => {
   if (!domain) return null;
@@ -105,8 +157,33 @@ const PlanPills = ({ items }) => {
   );
 };
 
-const PlanDetail = ({ label, children }) => {
-  if (!children) return null;
+const QueryList = ({ items }) => {
+  const visibleItems = getPlanList(items);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-1.5">
+      {visibleItems.map((item, index) => (
+        <p
+          key={`${item}-${index}`}
+          className="text-xs text-text-secondary font-normal"
+          style={{
+            borderRadius: '8px',
+            border: '1px solid #E2E5DE',
+            background: '#FFFFFF',
+            padding: '7px 10px',
+            lineHeight: 1.35,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {item}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+const PlanDetail = ({ label, children, show = true }) => {
+  if (!show) return null;
   return (
     <div className="mt-3">
       <p className="text-xs font-semibold text-text-tertiary">{label}</p>
@@ -140,6 +217,7 @@ const DeepResearchRecord = ({ step }) => {
 
 const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
+  const planItems = buildPlanDisplayItems(data.plan);
 
   const getVerificationBadge = (verification) => {
     if (!verification || typeof verification !== 'object') return null;
@@ -216,7 +294,7 @@ const ResearchResults = ({ data }) => {
       {activeTab === 'process' && (
         <div className="space-y-8">
           {/* Research plan */}
-          {data.plan && data.plan.length > 0 && (
+          {planItems.length > 0 && (
             <div>
               <h3
                 className="text-text-primary mb-5"
@@ -225,21 +303,43 @@ const ResearchResults = ({ data }) => {
                 研究计划
               </h3>
               <div className="space-y-3">
-                {data.plan.map((step, index) => (
+                {planItems.map((step, index) => {
+                  const description = getPlanDescription(step);
+                  const searchQueries = getPlanList(step.search_queries);
+                  const evidenceTargets = getPlanList(step.evidence_targets);
+                  const expectedOutcome = safeTrim(step.expected_outcome);
+                  return (
                   <div
                     key={index}
-                    className="flex items-start gap-4 p-4 rounded-xl"
+                    className={`flex items-start gap-4 rounded-xl ${step.isDeepStep ? 'p-3.5' : 'p-4'}`}
                     style={{ background: '#F5F8F2', boxShadow: 'rgba(14,15,12,0.08) 0px 0px 0px 1px' }}
                   >
                     <div
-                      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-black"
+                      className="flex-shrink-0 rounded-full flex items-center justify-center text-sm font-black"
                       style={{ background: '#e2f6d5', color: '#163300' }}
                     >
-                      {step.step}
+                      <span
+                        className="flex items-center justify-center"
+                        style={{
+                          minWidth: step.isDeepStep ? '38px' : '32px',
+                          height: '32px',
+                          padding: step.isDeepStep ? '0 8px' : 0,
+                        }}
+                      >
+                        {step.displayStep}
+                      </span>
                     </div>
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h5 className="text-text-primary font-semibold" style={{ fontSize: '15px' }}>{step.title}</h5>
+                        {step.isDeepStep && (
+                          <span
+                            className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                            style={{ background: '#FFFFFF', color: '#5f665c', boxShadow: 'rgba(14,15,12,0.12) 0px 0px 0px 1px' }}
+                          >
+                            深挖查询
+                          </span>
+                        )}
                         {step.dimension && (
                           <span
                             className="rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -249,26 +349,32 @@ const ResearchResults = ({ data }) => {
                           </span>
                         )}
                       </div>
-                      {(step.rationale || step.description) && (
-                        <p className="text-sm text-text-secondary mt-1 font-normal">
-                          {step.rationale || step.description}
+                      {step.isDeepStep && step.parent_query && (
+                        <p className="text-xs text-text-tertiary mt-1 font-normal">
+                          来自：{step.parent_query}
                         </p>
                       )}
-                      <PlanDetail label="搜索策略">
-                        <PlanPills items={step.search_queries} />
+                      {description && (
+                        <p className="text-sm text-text-secondary mt-1 font-normal">
+                          {description}
+                        </p>
+                      )}
+                      <PlanDetail label="搜索策略" show={searchQueries.length > 0}>
+                        <QueryList items={searchQueries} />
                       </PlanDetail>
-                      <PlanDetail label="预期产出">
+                      <PlanDetail label="预期产出" show={Boolean(expectedOutcome)}>
                         <p className="mt-1 text-xs text-text-secondary font-normal">
-                          {step.expected_outcome}
+                          {expectedOutcome}
                         </p>
                       </PlanDetail>
-                      <PlanDetail label="证据目标">
-                        <PlanPills items={step.evidence_targets} />
+                      <PlanDetail label="证据目标" show={evidenceTargets.length > 0}>
+                        <PlanPills items={evidenceTargets} />
                       </PlanDetail>
                       <DeepResearchRecord step={step} />
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
