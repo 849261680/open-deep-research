@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { FileText, CheckCircle, ShieldCheck, ShieldAlert, Link2, FileSearch } from 'lucide-react';
 import ResultHeader from './ResultHeader';
 import CollapsibleSection from './CollapsibleSection';
@@ -208,7 +209,7 @@ const ResearchResults = ({ data }) => {
       {/* Content */}
       {activeTab === 'report' && (
         <div className="markdown-content">
-          <ReactMarkdown>{data.report}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.report}</ReactMarkdown>
         </div>
       )}
 
