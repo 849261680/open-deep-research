@@ -162,6 +162,8 @@ export default function AuthPage({ onClose = null }) {
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#868685' }}>或</span>
               <span style={{ height: '1px', background: '#E8ECE3', flex: 1 }} />
             </div>
+          </div>
+          <div className="flex justify-center">
             <a
               href={authAPI.googleLoginUrl()}
               className="mt-4 flex items-center justify-center rounded-full font-semibold transition-transform duration-fast btn-scale"
@@ -170,8 +172,6 @@ export default function AuthPage({ onClose = null }) {
                 color: '#202124',
                 fontSize: '16px',
                 padding: '13px 18px',
-                marginLeft: 'auto',
-                marginRight: 'auto',
                 minWidth: '220px',
                 width: '72%',
               }}
