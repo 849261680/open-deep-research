@@ -13,6 +13,33 @@ os.environ.setdefault(
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from backend.app.main import app
+from backend.app.core.logging import KeyValueFormatter
+
+
+def test_key_value_formatter_renders_extra_fields() -> None:
+    """Formatter keeps readable logs while exposing searchable context."""
+    formatter = KeyValueFormatter("%(levelname)s [%(name)s] %(message)s")
+    record = logging.LogRecord(
+        name="backend.test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="step_complete",
+        args=(),
+        exc_info=None,
+    )
+    record.task_id = "task-123"
+    record.source_count = 0
+    record.query = "quantum computing"
+    record.should_continue = False
+
+    formatted = formatter.format(record)
+
+    assert formatted.startswith("INFO [backend.test] step_complete")
+    assert "task_id=task-123" in formatted
+    assert "source_count=0" in formatted
+    assert 'query="quantum computing"' in formatted
+    assert "should_continue=false" in formatted
 
 
 def test_health_request_writes_http_log(caplog) -> None:

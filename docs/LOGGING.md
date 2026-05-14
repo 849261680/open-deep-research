@@ -25,6 +25,12 @@ HTTP 请求会写入 `backend.http` 日志，字段包含：
 - `status`
 - `duration_seconds`
 
+这些字段会追加在日志正文后面，格式为人类可读的 `key=value`：
+
+```text
+INFO [backend.http] http_request method=POST path=/api/research status=200 duration_seconds=0.014
+```
+
 业务模块继续使用标准 Python `logging.getLogger(__name__)`。需要更多细节时设置：
 
 ```bash
