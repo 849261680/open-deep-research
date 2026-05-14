@@ -15,6 +15,8 @@ import os
 import sqlite3
 from unittest.mock import MagicMock
 
+import requests
+
 # ── 避免导入时触发真实 DB / env 初始化 ──────────────────────────────────────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_logic.db")
 os.environ.setdefault("SECRET_KEY", "test-secret")
@@ -855,6 +857,71 @@ class TestSearchTools:
 
         search_tools._sync_google_search.assert_called_once_with("DeepSeek", 10)
         assert result == [{"title": "A", "link": "https://a.com"}]
+
+    def test_tavily_transport_failure_logs_warning_without_traceback(
+        self, monkeypatch, caplog
+    ):
+        search_tools = SearchTools()
+        search_tools.tavily_api_key = "test-tavily"
+
+        async def fake_to_thread(func, *args, **kwargs):  # noqa: ANN001
+            return func(*args, **kwargs)
+
+        def fail_search(query: str, num_results: int):  # noqa: ARG001
+            raise requests.exceptions.SSLError("tls eof")
+
+        import asyncio
+
+        monkeypatch.setattr("backend.app.services.search_tools.asyncio.to_thread", fake_to_thread)
+        monkeypatch.setattr(search_tools, "_sync_tavily_search", fail_search)
+        caplog.set_level("WARNING", logger="backend.app.services.search_tools")
+
+        result = asyncio.run(search_tools.tavily_search("DeepSeek"))
+
+        assert result == []
+        warning_logs = [
+            record
+            for record in caplog.records
+            if record.getMessage().startswith("Tavily search failed")
+        ]
+        assert len(warning_logs) == 1
+        assert warning_logs[0].exc_info is None
+
+    def test_comprehensive_search_falls_back_when_tavily_returns_empty(
+        self, monkeypatch
+    ):
+        search_tools = SearchTools()
+        search_tools.tavily_api_key = "test-tavily"
+        search_tools.serpapi_key = None
+
+        async def empty_tavily(query: str, num_results: int = 10):  # noqa: ARG001
+            return []
+
+        async def fake_duckduckgo(query: str, num_results: int = 10):  # noqa: ARG001
+            return [
+                {
+                    "title": "Fallback",
+                    "link": "https://example.com/fallback",
+                    "snippet": "fallback result",
+                    "source": "duckduckgo",
+                }
+            ]
+
+        import asyncio
+
+        monkeypatch.setattr(search_tools, "tavily_search", empty_tavily)
+        monkeypatch.setattr(search_tools, "duckduckgo_search", fake_duckduckgo)
+
+        result = asyncio.run(search_tools.comprehensive_search("DeepSeek"))
+
+        assert result["web"] == [
+            {
+                "title": "Fallback",
+                "link": "https://example.com/fallback",
+                "snippet": "fallback result",
+                "source": "duckduckgo",
+            }
+        ]
 
 
 class TestResearchRetriever:

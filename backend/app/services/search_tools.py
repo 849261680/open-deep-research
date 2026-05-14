@@ -34,45 +34,41 @@ class SearchTools:
             logger.warning("Tavily search timeout for query: %s", query)
             return []
         except Exception as e:
-            logger.error("Tavily search error: %s", e)
+            logger.warning("Tavily search failed for query %s: %s", query, e)
             return []
 
     def _sync_tavily_search(
         self, query: str, num_results: int = 10
     ) -> list[dict[str, object]]:
         """同步版本的Tavily搜索，优化内容长度"""
-        try:
-            from tavily import TavilyClient
+        from tavily import TavilyClient
 
-            tavily = TavilyClient(api_key=self.tavily_api_key)
-            response = tavily.search(
-                query=query,
-                search_depth="basic",
-                max_results=min(num_results, 8),
+        tavily = TavilyClient(api_key=self.tavily_api_key)
+        response = tavily.search(
+            query=query,
+            search_depth="basic",
+            max_results=min(num_results, 8),
+        )
+
+        results = []
+        for result in response.get("results", []):
+            title = result.get("title", "")
+            content = result.get("content", "")
+
+            max_content_length = 300
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "..."
+
+            results.append(
+                {
+                    "title": title,
+                    "link": result.get("url", ""),
+                    "snippet": content,
+                    "source": "tavily",
+                }
             )
 
-            results = []
-            for result in response.get("results", []):
-                title = result.get("title", "")
-                content = result.get("content", "")
-
-                max_content_length = 300
-                if len(content) > max_content_length:
-                    content = content[:max_content_length] + "..."
-
-                results.append(
-                    {
-                        "title": title,
-                        "link": result.get("url", ""),
-                        "snippet": content,
-                        "source": "tavily",
-                    }
-                )
-
-            return results
-        except Exception as e:
-            logger.error("Sync Tavily search error: %s", e, exc_info=True)
-            return []
+        return results
 
     async def google_search(
         self, query: str, num_results: int = 10
@@ -89,6 +85,18 @@ class SearchTools:
         except Exception as e:
             logger.error("Google search error: %s", e)
             return await self.tavily_search(query, num_results)
+
+    async def _serpapi_search(
+        self, query: str, num_results: int = 10
+    ) -> list[dict[str, object]]:
+        """Use SerpAPI without falling back to Tavily."""
+        if not self.serpapi_key:
+            return []
+        try:
+            return await asyncio.to_thread(self._sync_google_search, query, num_results)
+        except Exception as e:
+            logger.warning("SerpAPI search failed for query %s: %s", query, e)
+            return []
 
     def _sync_google_search(
         self, query: str, num_results: int = 10
@@ -197,25 +205,29 @@ class SearchTools:
 
         if self.tavily_api_key:
             tavily_results = await self.tavily_search(query, 6)
+            if not tavily_results:
+                logger.warning("Tavily returned no results, using fallback search")
+                tavily_results = await self._fallback_web_search(query, 8)
             results["web"] = tavily_results
             results["wikipedia"] = []
             results["academic"] = []
         else:
             logger.warning("Tavily 不可用，使用备用搜索方案")
-            try:
-                google_results = await self.google_search(query, 8)
-                if google_results:
-                    results["web"] = google_results
-                else:
-                    results["web"] = await self.duckduckgo_search(query, 8)
-            except Exception as e:
-                logger.warning("Google搜索失败 (%s)，使用DuckDuckGo搜索", e)
-                results["web"] = await self.duckduckgo_search(query, 8)
+            results["web"] = await self._fallback_web_search(query, 8)
 
             results["wikipedia"] = []
             results["academic"] = []
 
         return results
+
+    async def _fallback_web_search(
+        self, query: str, num_results: int
+    ) -> list[dict[str, object]]:
+        """Search SerpAPI first, then DuckDuckGo, without retrying Tavily."""
+        google_results = await self._serpapi_search(query, num_results)
+        if google_results:
+            return google_results
+        return await self.duckduckgo_search(query, num_results)
 
 
 # 全局实例
