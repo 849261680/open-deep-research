@@ -3,6 +3,17 @@ import errorHandler from './errorHandler';
 
 const GUEST_ID_STORAGE_KEY = 'research-guest-id';
 const STREAM_INACTIVITY_TIMEOUT_MS = 600000;
+const DEFAULT_DEEP_RESEARCH_CONFIG = {
+  report_type: 'deep',
+  deep_research_breadth: 2,
+  deep_research_depth: 2,
+};
+
+// 构建前端显式发送的深度研究配置，允许调用方覆盖默认值。
+const buildDeepResearchConfig = (config = {}) => ({
+  ...DEFAULT_DEEP_RESEARCH_CONFIG,
+  ...config,
+});
 
 // 解析 API 地址，避免生产环境静默回退到访问者本机。
 const resolveApiBaseUrl = () => {
@@ -191,7 +202,8 @@ export const researchAPI = {
   startResearchStream: async (query, onUpdate, options = {}) => {
     return researchAPI.streamRequest('/api/research', {
       query,
-      stream: true
+      stream: true,
+      config: buildDeepResearchConfig(options.config),
     }, onUpdate, options);
   },
 
@@ -210,11 +222,12 @@ export const researchAPI = {
   },
 
   // 开始研究（非流式）
-  startResearch: async (query) => {
+  startResearch: async (query, options = {}) => {
     const response = await errorHandler.withRetry(async () => {
       return await api.post('/api/research', {
         query: query,
-        stream: false
+        stream: false,
+        config: buildDeepResearchConfig(options.config),
       });
     });
     return response.data;
