@@ -170,7 +170,10 @@ export default function AuthPage({ onClose = null }) {
                 color: '#202124',
                 fontSize: '16px',
                 padding: '13px 18px',
-                width: '100%',
+                marginLeft: 'auto',
+                marginRight: 'auto',
+                minWidth: '220px',
+                width: '72%',
               }}
             >
               使用 Google 登录
