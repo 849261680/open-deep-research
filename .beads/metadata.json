@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "open_deepresearch",
+  "project_id": "9363179b-2e4d-4dd0-84af-7ff5285a3819"
+}
