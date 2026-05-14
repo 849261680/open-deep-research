@@ -4,6 +4,8 @@ import asyncio
 import html
 import logging
 import re
+from typing import Any
+from typing import cast
 
 import requests
 
@@ -30,7 +32,7 @@ class ContentExtractionService:
         try:
             response = requests.get(
                 url,
-                headers=self.headers,
+                headers=cast(Any, self.headers),
                 timeout=8,
             )
             response.raise_for_status()

@@ -4,6 +4,8 @@ import os
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import Any
+from typing import cast
 
 import requests
 from requests.exceptions import Timeout
@@ -123,8 +125,8 @@ class DeepSeekService:
                 start_time = time.time()
                 response = requests.post(
                     f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=payload,
+                    headers=cast(Any, self.headers),
+                    json=cast(Any, payload),
                     timeout=90,
                 )
                 elapsed = time.time() - start_time
@@ -200,8 +202,8 @@ class DeepSeekService:
         def _stream_lines() -> list[str]:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=payload,
+                headers=cast(Any, self.headers),
+                json=cast(Any, payload),
                 stream=True,
                 timeout=90,
             )

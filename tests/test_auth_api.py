@@ -131,7 +131,7 @@ def test_get_me_returns_current_user(client: TestClient) -> None:
 def test_get_me_requires_authentication(client: TestClient) -> None:
     response = client.get("/api/auth/me")
 
-    assert response.status_code == 403
+    assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
 
