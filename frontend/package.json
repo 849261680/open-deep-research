@@ -19,8 +19,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "dev": "react-scripts start",
+    "postinstall": "node scripts/patch-cra-webpack-dev-server.js",
+    "start": "node scripts/patch-cra-webpack-dev-server.js && react-scripts start",
+    "dev": "node scripts/patch-cra-webpack-dev-server.js && react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
