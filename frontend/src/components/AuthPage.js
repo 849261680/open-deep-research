@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { authAPI } from '../services/api';
 
 export default function AuthPage({ onClose = null }) {
   const { login, register } = useAuth();
@@ -154,6 +155,27 @@ export default function AuthPage({ onClose = null }) {
               </button>
             </div>
           </form>
+
+          <div style={{ width: '92%', margin: '24px auto 0' }}>
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <span style={{ height: '1px', background: '#E8ECE3', flex: 1 }} />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#868685' }}>或</span>
+              <span style={{ height: '1px', background: '#E8ECE3', flex: 1 }} />
+            </div>
+            <a
+              href={authAPI.googleLoginUrl()}
+              className="mt-4 flex items-center justify-center rounded-full font-semibold transition-transform duration-fast btn-scale"
+              style={{
+                border: '1px solid #DADCE0',
+                color: '#202124',
+                fontSize: '16px',
+                padding: '13px 18px',
+                width: '100%',
+              }}
+            >
+              使用 Google 登录
+            </a>
+          </div>
 
           <div
             className="mt-8 pt-5 flex items-center justify-center gap-2"

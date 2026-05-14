@@ -24,21 +24,65 @@ function getAnonymousTaskIds() {
   }
 }
 
+function readOAuthTokenFromHash() {
+  // 从后端 OAuth callback 写入的 URL fragment 中取出 JWT。
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) {
+    return null;
+  }
+
+  const params = new URLSearchParams(hash);
+  return params.get('auth_token');
+}
+
+function clearOAuthTokenFromUrl() {
+  // 清理地址栏中的 token，避免用户复制 URL 时泄露登录态。
+  window.history.replaceState(
+    {},
+    document.title,
+    `${window.location.pathname}${window.location.search}`
+  );
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true); // 初始化时检查 token
 
   // 启动时尝试恢复登录状态
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    authAPI.getMe()
-      .then((u) => setUser(u))
-      .catch(() => localStorage.removeItem('access_token'))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const oauthToken = readOAuthTokenFromHash();
+      const token = oauthToken || localStorage.getItem('access_token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      localStorage.setItem('access_token', token);
+      if (oauthToken) {
+        clearOAuthTokenFromUrl();
+      }
+
+      try {
+        const u = await authAPI.getMe();
+        if (oauthToken) {
+          const taskIds = getAnonymousTaskIds();
+          if (taskIds.length > 0) {
+            await authAPI.claimHistory(taskIds, getGuestId());
+          }
+        }
+        if (!cancelled) setUser(u);
+      } catch (_error) {
+        localStorage.removeItem('access_token');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    restoreSession();
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async (email, password) => {

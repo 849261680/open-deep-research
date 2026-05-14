@@ -265,6 +265,8 @@ export const researchAPI = {
 
 // 认证API
 export const authAPI = {
+  googleLoginUrl: () => `${API_BASE_URL}/api/auth/google/login`,
+
   register: async (email, password) => {
     const response = await api.post('/api/auth/register', { email, password });
     return response.data;

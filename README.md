@@ -219,6 +219,7 @@ cp frontend/.env.example frontend/.env
 PORT=8003
 FRONTEND_URL=http://localhost:3003
 REACT_APP_API_URL=http://localhost:8003
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8003/api/auth/google/callback
 ```
 
 #### DeepSeek API
@@ -233,6 +234,13 @@ REACT_APP_API_URL=http://localhost:8003
 1. 访问 [Tavily 官网](https://tavily.com/)
 2. 注册获取免费 API 密钥（1000 次/月）
 3. 将密钥添加到 `.env` 文件中
+
+#### Google 登录
+
+1. 在 Google Cloud Console 创建 OAuth Client，类型选择 Web application
+2. 添加 Authorized redirect URI：`http://localhost:8003/api/auth/google/callback`
+3. 将 `GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`GOOGLE_OAUTH_REDIRECT_URI` 写入后端 `.env`
+4. 生产环境把 redirect URI 改成你的后端域名，例如 `https://your-railway-domain.railway.app/api/auth/google/callback`
 
 ## 🚀 部署指南
 
@@ -249,6 +257,9 @@ REACT_APP_API_URL=http://localhost:8003
    DEEPSEEK_MAX_OUTPUT_TOKENS=4000
    DEEPSEEK_MAX_PROMPT_CHARS=24000
    TAVILY_API_KEY=your_key
+   GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+   GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
+   GOOGLE_OAUTH_REDIRECT_URI=https://your-railway-domain.railway.app/api/auth/google/callback
    # PORT 由 Railway 自动提供，不需要手动设置
    FRONTEND_URL=https://your-vercel-domain.vercel.app
    ```

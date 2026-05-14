@@ -4,6 +4,7 @@ import asyncio
 import os
 import sqlite3
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -108,6 +109,65 @@ def test_login_rejects_invalid_password(client: TestClient) -> None:
     assert register.status_code == 201
     assert response.status_code == 401
     assert response.json()["detail"] == "邮箱或密码错误"
+
+
+def test_google_login_redirects_to_google_authorization(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_OAUTH_REDIRECT_URI",
+        "http://localhost:8003/api/auth/google/callback",
+    )
+
+    response = client.get("/api/auth/google/login", follow_redirects=False)
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    assert "client_id=google-client-id" in location
+    assert "redirect_uri=http%3A%2F%2Flocalhost%3A8003%2Fapi%2Fauth%2Fgoogle%2Fcallback" in location
+    assert "scope=openid+email+profile" in location
+    assert "google_oauth_state=" in response.headers["set-cookie"]
+
+
+def test_google_callback_issues_token_for_google_user(client: TestClient, monkeypatch) -> None:
+    from backend.app.api import auth as auth_api
+
+    async def fetch_google_user_email(_settings, code: str) -> str:
+        assert code == "oauth-code"
+        return "google-user@example.com"
+
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_OAUTH_REDIRECT_URI",
+        "http://localhost:8003/api/auth/google/callback",
+    )
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3003")
+    monkeypatch.setattr(
+        auth_api,
+        "fetch_google_user_email",
+        fetch_google_user_email,
+        raising=False,
+    )
+    client.cookies.set("google_oauth_state", "state-123")
+
+    response = client.get(
+        "/api/auth/google/callback?code=oauth-code&state=state-123",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 307
+    parsed_location = urlparse(response.headers["location"])
+    assert f"{parsed_location.scheme}://{parsed_location.netloc}" == "http://localhost:3003"
+    token = parse_qs(parsed_location.fragment)["auth_token"][0]
+    me = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me.status_code == 200
+    assert me.json()["email"] == "google-user@example.com"
+    assert "google_oauth_state=" in response.headers["set-cookie"]
 
 
 def test_get_me_returns_current_user(client: TestClient) -> None:
