@@ -19,7 +19,7 @@ if [ ! -f "backend/.env" ]; then
 fi
 
 echo "📦 同步 Python 依赖..."
-uv sync --extra dev
+uv sync --group dev
 
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8003}"

@@ -35,7 +35,7 @@ fi
 
 # 启动后端
 echo "🔧 启动后端服务..."
-uv sync --extra dev
+uv sync --group dev
 
 # 后台启动后端
 uv run python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8003 &
