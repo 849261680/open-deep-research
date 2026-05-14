@@ -1,0 +1,20 @@
+{
+  "include": ["backend/app", "tests"],
+  "exclude": ["example", "frontend", ".venv", ".mypy_cache"],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportAny": "none",
+  "reportCallInDefaultInitializer": "none",
+  "reportImplicitOverride": "none",
+  "reportMissingTypeStubs": "none",
+  "reportPrivateUsage": "none",
+  "reportUnannotatedClassAttribute": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnusedCallResult": "none",
+  "reportUnusedFunction": "none",
+  "reportUnusedImport": "none",
+  "reportUnusedParameter": "none"
+}

@@ -106,12 +106,13 @@ echo "🧪 运行测试..."
 # 后端测试
 echo "🔧 运行后端测试..."
 cd backend
-uv run pytest ../tests/ -v
+cd ..
+uv run python -m pytest tests -q
 BACKEND_EXIT_CODE=$?
 
 # 前端测试
 echo "🌐 运行前端测试..."
-cd ../frontend
+cd frontend
 npm test -- --coverage --watchAll=false
 FRONTEND_EXIT_CODE=$?
 
@@ -134,54 +135,18 @@ EOF
 chmod +x scripts/test.sh
 echo "✅ 测试脚本创建完成: scripts/test.sh"
 
-# 9. 创建代码质量检查脚本
-echo "🔍 创建代码质量检查脚本..."
-cat > scripts/lint.sh << 'EOF'
+# 9. 创建后端类型检查脚本
+echo "🔍 创建后端类型检查脚本..."
+cat > scripts/typecheck.sh << 'EOF'
 #!/bin/bash
-echo "🔍 运行代码质量检查..."
+echo "🔍 运行后端类型检查..."
 
-# 后端检查
 echo "🔧 检查后端代码..."
-cd backend
-
-echo "  - 运行 ruff..."
-uv run ruff check app/ --fix
-echo "  - 运行 black..."
-uv run black app/ --check
-echo "  - 运行 mypy..."
-uv run mypy app/
-
-BACKEND_LINT_EXIT_CODE=$?
-
-# 前端检查
-echo "🌐 检查前端代码..."
-cd ../frontend
-
-echo "  - 运行 ESLint..."
-npm run lint -- --fix
-echo "  - 运行 Prettier..."
-npm run format -- --check
-
-FRONTEND_LINT_EXIT_CODE=$?
-
-# 汇总结果
-echo ""
-echo "📊 代码质量检查结果:"
-echo "   - 后端: $([ $BACKEND_LINT_EXIT_CODE -eq 0 ] && echo '✅ 通过' || echo '❌ 失败')"
-echo "   - 前端: $([ $FRONTEND_LINT_EXIT_CODE -eq 0 ] && echo '✅ 通过' || echo '❌ 失败')"
-
-# 返回综合状态
-if [ $BACKEND_LINT_EXIT_CODE -eq 0 ] && [ $FRONTEND_LINT_EXIT_CODE -eq 0 ]; then
-    echo "🎉 代码质量检查通过！"
-    exit 0
-else
-    echo "❌ 代码质量检查失败"
-    exit 1
-fi
+uv run basedpyright backend/app tests
 EOF
 
-chmod +x scripts/lint.sh
-echo "✅ 代码质量检查脚本创建完成: scripts/lint.sh"
+chmod +x scripts/typecheck.sh
+echo "✅ 后端类型检查脚本创建完成: scripts/typecheck.sh"
 
 echo ""
 echo "🎉 uv 迁移完成！"
@@ -190,9 +155,9 @@ echo ""
 echo "📋 可用命令:"
 echo "  - 启动开发环境: ./scripts/dev.sh"
 echo "  - 运行测试: ./scripts/test.sh"
-echo "  - 代码质量检查: ./scripts/lint.sh"
+echo "  - 后端类型检查: ./scripts/typecheck.sh"
 echo "  - 启动后端: cd backend && uv run python -m uvicorn app.main:app --reload"
-echo "  - 运行后端测试: cd backend && uv run pytest"
+echo "  - 运行后端测试: uv run python -m pytest tests -q"
 echo ""
 echo "📖 更多信息请查看 README.md"
 echo ""

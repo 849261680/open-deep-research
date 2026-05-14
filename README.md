@@ -169,16 +169,16 @@ curl -s http://localhost:8003/metrics
 ### 代码质量检查
 
 ```bash
-# 当前仓库未提供 scripts/lint.sh，可直接使用 uv 运行检查
-uv run ruff check backend/app tests
+# 后端类型检查
+uv run basedpyright backend/app tests
 ```
 
 ### 测试
 
 ```bash
 # 运行后端测试
-uv sync --extra dev
-uv run pytest
+uv sync
+uv run python -m pytest tests -q
 ```
 
 ## 📁 项目结构
@@ -276,8 +276,8 @@ uv run command            # 在虚拟环境中运行命令
 
 # 开发相关
 ./scripts/dev.sh          # 启动开发环境
-uv run pytest             # 运行后端测试
-uv run ruff check backend/app tests  # 代码质量检查
+uv run python -m pytest tests -q  # 运行后端测试
+uv run basedpyright backend/app tests  # 后端类型检查
 
 # 部署相关
 uv build                 # 构建项目
