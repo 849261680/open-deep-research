@@ -17,6 +17,7 @@ from ..services.research_repository import ResearchRepository
 from .conductor import ResearchConductor
 from .config import ResearchConfig
 from .cost_tracker import CostTracker
+from .models import DeepResearchDecision
 from .models import ResearchPlanItem
 from .models import ResearchSource
 from .models import SubQueryContext
@@ -50,6 +51,7 @@ class ResearchAgent:
         self.max_concurrency = resolved_config.max_concurrency
         self.sub_queries: list[str] = []
         self.context: list[SubQueryContext] = []
+        self.checkpoint_contexts: list[SubQueryContext] = []
         self.research_sources: list[ResearchSource] = []
         self.visited_urls: set[str] = set()
         self.plan_items: list[ResearchPlanItem] = []
@@ -85,6 +87,7 @@ class ResearchAgent:
             await event_queue.put(event)
 
         self.task_id = task.id
+        self.checkpoint_contexts = self._sections_to_contexts(task.sections)
         task.status = ResearchTaskStatus.PLANNING
         conduct_task = asyncio.create_task(
             self.conductor.conduct_research(on_event=collect_event)
@@ -98,6 +101,10 @@ class ResearchAgent:
                     yield update
 
             contexts = await conduct_task
+            contexts = self._merge_checkpoint_contexts(contexts)
+            self.research_sources = self.conductor.source_curator.curate(
+                [source for context in contexts for source in context.sources]
+            )
             task.sections = self._contexts_to_sections(contexts)
             task.touch()
 
@@ -244,6 +251,59 @@ class ResearchAgent:
                 )
             )
         return sections
+
+    def _sections_to_contexts(
+        self,
+        sections: list[ResearchSection],
+    ) -> list[SubQueryContext]:
+        """Restore completed checkpoint sections as reusable research contexts."""
+        contexts: list[SubQueryContext] = []
+        for section in sections:
+            if section.status != "completed":
+                continue
+            contexts.append(
+                SubQueryContext(
+                    step=section.step,
+                    query=section.title,
+                    depth=section.depth,
+                    parent_query=section.parent_query,
+                    sources=[
+                        ResearchSource(
+                            title=str(source.get("title", "")),
+                            link=str(source.get("link", "")),
+                            source=str(source.get("source", "web")),
+                            query=str(source.get("query", "")),
+                            status=str(source.get("status", "cited")),
+                            failure_reason=str(source.get("failure_reason", "")),
+                        )
+                        for source in section.search_sources
+                        if isinstance(source, dict)
+                    ],
+                    citations=section.citations,
+                    evidence_ids=section.evidence_ids,
+                    compressed_evidence=section.compressed_evidence,
+                    verification=section.verification,
+                    deep_research=DeepResearchDecision(
+                        reason=section.deep_research_reason,
+                        evidence_gaps=section.evidence_gaps,
+                        follow_up_queries=section.follow_up_queries,
+                        stop_condition=section.deep_research_stop_condition,
+                    ),
+                    context=section.analysis,
+                    source_summary=section.source_summary,
+                )
+            )
+        return contexts
+
+    def _merge_checkpoint_contexts(
+        self,
+        contexts: list[SubQueryContext],
+    ) -> list[SubQueryContext]:
+        """Combine restored checkpoint contexts with newly completed contexts."""
+        merged = {context.step: context for context in self.checkpoint_contexts}
+        for context in contexts:
+            merged[context.step] = context
+        return sorted(merged.values(), key=lambda item: item.step)
 
     def _sections_from_plan_event(self, data: object) -> list[ResearchSection]:
         """Build task sections from detailed or legacy plan event payloads."""
@@ -413,7 +473,7 @@ class ResearchAgent:
         sections = self._sections_from_plan_event(event.get("data", {}))
         if not sections:
             return [event]
-        task.sections = sections
+        task.sections = self._merge_checkpoint_sections(task.sections, sections)
         task.status = ResearchTaskStatus.RESEARCHING
         task.touch()
         return [
@@ -427,6 +487,22 @@ class ResearchAgent:
                 "message": "成本统计已更新",
                 "data": self.cost_tracker.summary(),
             },
+        ]
+
+    def _merge_checkpoint_sections(
+        self,
+        existing_sections: list[ResearchSection],
+        planned_sections: list[ResearchSection],
+    ) -> list[ResearchSection]:
+        """Keep completed checkpoint sections when a resume emits a plan event."""
+        completed_by_step = {
+            section.step: section
+            for section in existing_sections
+            if section.status == "completed"
+        }
+        return [
+            completed_by_step.get(section.step, section)
+            for section in planned_sections
         ]
 
     def _apply_step_event(

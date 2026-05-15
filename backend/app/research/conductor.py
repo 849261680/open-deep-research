@@ -49,8 +49,15 @@ class ResearchConductor:
         )
         plan_items = await self._plan_items(on_event)
         plan_items = self._ensure_original_query_plan(plan_items)
-        sub_queries = [item.title for item in plan_items]
-        if self.researcher.query not in sub_queries:
+        completed_queries = self._completed_checkpoint_queries()
+        runnable_plan_items = [
+            item for item in plan_items if item.title not in completed_queries
+        ]
+        sub_queries = [item.title for item in runnable_plan_items]
+        if (
+            self.researcher.query not in sub_queries
+            and self.researcher.query not in completed_queries
+        ):
             sub_queries.append(self.researcher.query)
         self.researcher.sub_queries = sub_queries
         self.researcher.plan_items = plan_items
@@ -63,9 +70,16 @@ class ResearchConductor:
             {
                 "sub_queries": sub_queries,
                 "plan_items": self._serialize_plan_items(plan_items),
+                "completed_checkpoint_queries": sorted(completed_queries),
                 "cost_summary": self.researcher.cost_tracker.summary(),
             },
         )
+
+        if not sub_queries:
+            self.researcher.context = list(
+                getattr(self.researcher, "checkpoint_contexts", [])
+            )
+            return []
 
         semaphore = asyncio.Semaphore(self.researcher.max_concurrency)
 
@@ -79,9 +93,10 @@ class ResearchConductor:
                     on_event=on_event,
                 )
 
+        runnable_steps = [(item.step, item.title) for item in runnable_plan_items]
         tasks = [
             asyncio.create_task(run_sub_query(index, sub_query))
-            for index, sub_query in enumerate(sub_queries, start=1)
+            for index, sub_query in runnable_steps
         ]
         contexts: list[SubQueryContext] = []
         for task in asyncio.as_completed(tasks):
@@ -95,6 +110,14 @@ class ResearchConductor:
         all_sources = [source for item in contexts for source in item.sources]
         self.researcher.research_sources = self.source_curator.curate(all_sources)
         return contexts
+
+    def _completed_checkpoint_queries(self) -> set[str]:
+        """Return queries already completed in the persisted checkpoint."""
+        return {
+            context.query
+            for context in getattr(self.researcher, "checkpoint_contexts", [])
+            if context.context
+        }
 
     async def _plan_items(
         self,

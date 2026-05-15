@@ -1,6 +1,22 @@
 import React from 'react';
-import { CheckCircle, Clock, XCircle, Pin, Trash2, RotateCcw } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, XCircle, Pin, Trash2, RotateCcw } from 'lucide-react';
 import { useHistory } from '../contexts/HistoryContext';
+
+// 判断失败记录是否来自用户停止或恢复中断，而不是系统错误。
+export const isInterruptedResearch = (research) => {
+  const error = research.error || research.message || '';
+  return research.status === 'failed' && (
+    error.includes('停止') || error.includes('中断')
+  );
+};
+
+// 返回历史列表中面向人的任务状态文案。
+export const getResearchStatusLabel = (research) => {
+  if (research.status === 'completed') return '已完成';
+  if (isInterruptedResearch(research)) return '已中断';
+  if (research.status === 'failed') return '已失败';
+  return '可继续';
+};
 
 const HistoryItem = ({ research, isActive, onResume }) => {
   const { loadResearch, togglePin, deleteResearch } = useHistory();
@@ -27,9 +43,14 @@ const HistoryItem = ({ research, isActive, onResume }) => {
 
   const statusConfig = {
     completed: { icon: CheckCircle, color: '#054d28' },
-    failed: { icon: XCircle, color: '#d03238' },
+    failed: isInterruptedResearch(research)
+      ? { icon: AlertCircle, color: '#9f6a00' }
+      : { icon: XCircle, color: '#d03238' },
     in_progress: { icon: Clock, color: '#ffd11a', pulse: true },
+    planning: { icon: Clock, color: '#ffd11a', pulse: true },
     pending: { icon: Clock, color: '#ffd11a', pulse: true },
+    reporting: { icon: Clock, color: '#ffd11a', pulse: true },
+    researching: { icon: Clock, color: '#ffd11a', pulse: true },
   };
 
   const s = statusConfig[research.status] || { icon: Clock, color: '#868685' };
@@ -73,7 +94,7 @@ const HistoryItem = ({ research, isActive, onResume }) => {
         className="ml-5 text-text-tertiary"
         style={{ fontSize: '11px', fontWeight: 400 }}
       >
-        {formatTime(research.timestamp)}
+        {formatTime(research.timestamp)} · {getResearchStatusLabel(research)}
       </div>
 
       {/* Hover actions */}

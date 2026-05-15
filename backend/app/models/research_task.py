@@ -89,6 +89,7 @@ class ResearchTask(BaseModel):
     cost_summary: dict[str, object] = Field(default_factory=dict)
     quality_summary: dict[str, object] = Field(default_factory=dict)
     claim_checks: list[dict[str, object]] = Field(default_factory=list)
+    stream_events: list[dict[str, object]] = Field(default_factory=list)
     created_at: str = Field(default_factory=utc_now)
     updated_at: str = Field(default_factory=utc_now)
     completed_at: str | None = None

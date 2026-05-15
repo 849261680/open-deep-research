@@ -190,8 +190,7 @@ class ResearchOrchestrator:
             )
             return
 
-        self.repository.delete_evidence_for_task(task.id)
-        yield self._event("resume", "正在重新运行未完成研究任务...", {"task_id": task.id})
+        yield self._event("resume", "正在从持久化检查点继续研究任务...", {"task_id": task.id})
         async for update in self.run_task(task):
             yield update
 
@@ -278,6 +277,7 @@ class ResearchOrchestrator:
         """Persist task freshness when the queued update is streamable."""
         if not isinstance(update, dict):
             raise TypeError("ResearchAgent emitted a non-dict update")
+        task.stream_events.append(update)
         task.touch()
         self.repository.save_task(task)
         return update

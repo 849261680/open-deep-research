@@ -15,12 +15,15 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 from backend.app.core.deps import get_current_user
 from backend.app.main import app
 from backend.app.models.research_task import Citation
+from backend.app.models.research_task import EvidenceItem
+from backend.app.models.research_task import ResearchSection
 from backend.app.models.research_task import ResearchTask
 from backend.app.models.research_task import ResearchTaskStatus
 from backend.app.models.user import User
 from backend.app.core.orchestrator import ResearchOrchestrator
 from backend.app.research.agent import ResearchAgent
 from backend.app.research.models import DeepResearchDecision
+from backend.app.research.models import ResearchPlanItem
 from backend.app.research.models import ResearchSource
 from backend.app.research.models import SubQueryContext
 from backend.app.services.research_repository import ResearchRepository
@@ -594,7 +597,7 @@ def test_resume_reruns_incomplete_task_with_research_agent(monkeypatch, tmp_path
     assert report_complete["data"]["report"] == "# rerun"
 
 
-def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
+def test_resume_task_preserves_old_evidence_before_rerun(monkeypatch, tmp_path) -> None:
     orchestrator = ResearchOrchestrator()
     orchestrator.repository.db_path = str(tmp_path / "research.db")
     orchestrator.repository._ensure_db()
@@ -606,7 +609,6 @@ def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
         status=ResearchTaskStatus.RESEARCHING,
     )
     orchestrator.repository.save_task(task)
-    from backend.app.models.research_task import EvidenceItem
 
     orchestrator.repository.save_evidence(
         task.id,
@@ -634,7 +636,6 @@ def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
             },
         }
 
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("backend.app.core.orchestrator.ResearchAgent.run", fake_agent_run)
 
     events = []
@@ -647,7 +648,6 @@ def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
     import sqlite3
 
     asyncio.run(collect())
-    monkeypatch.undo()
 
     with sqlite3.connect(orchestrator.repository.db_path) as conn:
         evidence_count = conn.execute(
@@ -656,7 +656,188 @@ def test_resume_task_clears_old_evidence_before_rerun(tmp_path) -> None:
         ).fetchone()[0]
 
     assert events[0]["type"] == "resume"
-    assert evidence_count == 0
+    assert evidence_count == 1
+
+
+def test_repository_loads_unfinished_checkpoint_after_restart(tmp_path) -> None:
+    db_path = str(tmp_path / "research.db")
+    repository = ResearchRepository(db_path)
+    task = ResearchTask(
+        id="task-checkpoint",
+        user_id=1,
+        query="checkpoint query",
+        status=ResearchTaskStatus.RESEARCHING,
+        sections=[
+            ResearchSection(
+                id="subquery-1",
+                step=1,
+                title="done query",
+                description="已完成切片",
+                status="completed",
+                analysis="saved analysis",
+                evidence_ids=["evidence-old"],
+            )
+        ],
+        stream_events=[
+            {"type": "plan", "message": "saved plan", "data": [{"step": 1}]}
+        ],
+    )
+    repository.save_task(task)
+
+    restarted_repository = ResearchRepository(db_path)
+    loaded = restarted_repository.load_task("task-checkpoint", user_id=1)
+
+    assert loaded is not None
+    assert loaded.status == ResearchTaskStatus.RESEARCHING
+    assert loaded.sections[0].analysis == "saved analysis"
+    assert loaded.sections[0].evidence_ids == ["evidence-old"]
+    assert loaded.stream_events[0]["message"] == "saved plan"
+
+
+def test_resume_reuses_completed_checkpoint_sections_after_restart(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    orchestrator = ResearchOrchestrator()
+    orchestrator.repository.db_path = str(tmp_path / "research.db")
+    orchestrator.repository._ensure_db()
+    task = ResearchTask(
+        id="task-resume-checkpoint",
+        user_id=1,
+        query="pending query",
+        status=ResearchTaskStatus.RESEARCHING,
+        sections=[
+            ResearchSection(
+                id="subquery-1",
+                step=1,
+                title="done query",
+                description="已完成切片",
+                status="completed",
+                analysis="saved analysis",
+                citations=[
+                    Citation(
+                        title="Old Source",
+                        link="https://example.com/old",
+                        source="web",
+                    )
+                ],
+                search_sources=[
+                    {
+                        "title": "Old Source",
+                        "link": "https://example.com/old",
+                        "source": "web",
+                        "query": "done query",
+                        "status": "cited",
+                    }
+                ],
+                evidence_ids=["evidence-old"],
+            ),
+            ResearchSection(
+                id="subquery-2",
+                step=2,
+                title="pending query",
+                description="待恢复切片",
+            ),
+        ],
+    )
+    orchestrator.repository.save_task(task)
+    orchestrator.repository.save_evidence(
+        task.id,
+        EvidenceItem(
+            id="evidence-old",
+            section_id="subquery-1",
+            query="done query",
+            source_type="web",
+            title="Old Evidence",
+            link="https://example.com/old",
+            snippet="old",
+        ),
+    )
+    processed_queries: list[str] = []
+
+    async def fake_plan_items(self, on_event=None):  # noqa: ANN001
+        return [
+            ResearchPlanItem(
+                step=1,
+                title="done query",
+                dimension="已完成",
+                rationale="checkpoint",
+            ),
+            ResearchPlanItem(
+                step=2,
+                title="pending query",
+                dimension="待恢复",
+                rationale="resume",
+            ),
+        ]
+
+    async def fake_process_query_tree(
+        self,  # noqa: ANN001
+        *,
+        step: int,
+        query: str,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event=None,  # noqa: ANN001
+        depth: int = 1,
+        parent_query: str = "",
+        inherited_plan_item=None,  # noqa: ANN001
+    ) -> list[SubQueryContext]:
+        processed_queries.append(query)
+        return [
+            SubQueryContext(
+                step=step,
+                query=query,
+                context="new analysis",
+                evidence_ids=["evidence-new"],
+            )
+        ]
+
+    async def fake_write_report(self, **kwargs):  # noqa: ANN001, ANN003
+        return "# resumed"
+
+    monkeypatch.setattr(
+        "backend.app.research.conductor.ResearchConductor._plan_items",
+        fake_plan_items,
+    )
+    monkeypatch.setattr(
+        "backend.app.research.conductor.ResearchConductor._process_query_tree",
+        fake_process_query_tree,
+    )
+    monkeypatch.setattr(
+        "backend.app.research.writer.ResearchWriter.write_report",
+        fake_write_report,
+    )
+
+    events = []
+
+    async def collect() -> None:
+        async for event in orchestrator.resume_task(task.id, user_id=1):
+            events.append(event)
+
+    import asyncio
+    import sqlite3
+
+    asyncio.run(collect())
+    saved = orchestrator.repository.load_task(task.id, user_id=1)
+
+    with sqlite3.connect(orchestrator.repository.db_path) as conn:
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM evidence_items WHERE task_id = ?",
+            (task.id,),
+        ).fetchone()[0]
+
+    assert events[0]["type"] == "resume"
+    assert processed_queries == ["pending query"]
+    assert saved is not None
+    assert [section.title for section in saved.sections] == [
+        "done query",
+        "pending query",
+    ]
+    assert saved.sections[0].analysis == "saved analysis"
+    assert saved.sections[0].evidence_ids == ["evidence-old"]
+    assert saved.sections[1].analysis == "new analysis"
+    assert evidence_count == 1
 
 
 def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -> None:
@@ -694,7 +875,9 @@ def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -
     assert events[0]["message"] == "研究任务已创建"
     assert events[0]["data"]["task_id"] == events[1]["data"]["id"]
     assert events[0]["data"]["query"] == "new query"
-    assert orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)
+    saved = orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)
+    assert saved
+    assert [event["type"] for event in saved.stream_events] == ["report_complete"]
 
 
 def test_orchestrator_stop_task_marks_task_failed(tmp_path) -> None:
