@@ -13,6 +13,7 @@ os.environ.setdefault(
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from backend.app.core.deps import get_current_user
+from backend.app.core.deps import get_optional_current_user
 from backend.app.main import app
 from backend.app.models.research_task import Citation
 from backend.app.models.research_task import EvidenceItem
@@ -40,9 +41,11 @@ AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 @pytest.fixture
 def client() -> TestClient:
     app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_optional_current_user] = override_current_user
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_optional_current_user, None)
 
 
 def test_non_stream_research_returns_final_payload(monkeypatch, client: TestClient) -> None:
@@ -438,6 +441,35 @@ def test_get_research_task_requires_authenticated_owner(client: TestClient) -> N
 
     assert response.status_code == 404
     assert response.json()["detail"] == "研究任务不存在"
+
+
+def test_get_research_task_returns_authenticated_owner_payload(
+    client: TestClient,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    repository = ResearchRepository(str(tmp_path / "research.db"))
+    repository.save_task(
+        ResearchTask(
+            id="current-user-task",
+            user_id=1,
+            query="visible query",
+            status=ResearchTaskStatus.COMPLETED,
+            final_report="# visible",
+        )
+    )
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.repository",
+        repository,
+    )
+
+    response = client.get("/api/research/current-user-task", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "current-user-task"
+    assert payload["query"] == "visible query"
+    assert payload["final_report"] == "# visible"
 
 
 def test_anonymous_history_only_returns_guest_scoped_tasks(tmp_path) -> None:

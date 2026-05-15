@@ -24,6 +24,7 @@ class Base(DeclarativeBase):
 
 
 def resolve_sqlite_db_path(database_url: str) -> Path | None:
+    """Resolve a sqlite+aiosqlite URL into the local database file path."""
     prefix = "sqlite+aiosqlite:///"
     if not database_url.startswith(prefix):
         return None
@@ -39,19 +40,28 @@ def resolve_sqlite_db_path(database_url: str) -> Path | None:
     return Path(raw_path).resolve()
 
 
+def default_sqlite_db_path() -> Path:
+    """Return the shared SQLite file configured for the application database."""
+    sqlite_path = resolve_sqlite_db_path(DATABASE_URL)
+    if sqlite_path is None:
+        raise RuntimeError("ResearchRepository requires sqlite DATABASE_URL")
+    return sqlite_path
+
+
 async def get_db() -> AsyncSession:  # type: ignore[return]
+    """Yield one SQLAlchemy async session for request-scoped DB work."""
     async with AsyncSessionLocal() as session:
         yield session
 
 
 async def init_db() -> None:
     """创建所有表"""
+    from backend.app.models.research_record import EvidenceItemRecord  # noqa: F401
+    from backend.app.models.research_record import ResearchTaskRecord  # noqa: F401
     from backend.app.models.user import User  # noqa: F401
 
     if DATABASE_URL.startswith("sqlite"):
-        sqlite_path = resolve_sqlite_db_path(DATABASE_URL)
-        if sqlite_path:
-            sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        default_sqlite_db_path().parent.mkdir(parents=True, exist_ok=True)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

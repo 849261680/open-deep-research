@@ -5,6 +5,7 @@ import os
 import sqlite3
 from pathlib import Path
 
+from ..db.base import default_sqlite_db_path
 from ..models.research_task import EvidenceItem
 from ..models.research_task import ResearchTask
 
@@ -13,9 +14,9 @@ class ResearchRepository:
     """SQLite persistence for research tasks and evidence."""
 
     def __init__(self, db_path: str | None = None) -> None:
-        self.db_path = db_path or os.getenv(
-            "RESEARCH_DB_PATH",
-            str(Path("backend/data/research.db")),
+        """Create a repository bound to the shared app DB unless overridden."""
+        self.db_path = db_path or os.getenv("RESEARCH_DB_PATH") or str(
+            default_sqlite_db_path()
         )
         self._ensure_db()
 

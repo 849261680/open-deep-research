@@ -30,6 +30,8 @@ TEST_DB_PATH = Path("backend/data/test_app.db").resolve()
 def reset_users_table() -> None:
     asyncio.run(init_db())
     with sqlite3.connect(TEST_DB_PATH) as conn:
+        conn.execute("DELETE FROM evidence_items")
+        conn.execute("DELETE FROM research_tasks")
         conn.execute("DELETE FROM users")
         conn.commit()
 
@@ -234,6 +236,34 @@ def test_claim_history_assigns_anonymous_tasks_to_current_user(client: TestClien
     assert response.json()["claimed"] == 2
     assert repository.load_task("anon-task-1", user_id=user["id"]) is not None
     assert repository.load_task("anon-task-2", user_id=user["id"]) is not None
+
+
+def test_research_repository_uses_shared_application_database() -> None:
+    repository = ResearchRepository()
+    repository.save_task(
+        ResearchTask(
+            id="shared-db-task",
+            user_id=1,
+            query="shared database",
+            status=ResearchTaskStatus.COMPLETED,
+        )
+    )
+
+    with sqlite3.connect(TEST_DB_PATH) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        saved = conn.execute(
+            "SELECT query FROM research_tasks WHERE id = ?",
+            ("shared-db-task",),
+        ).fetchone()
+
+    assert repository.db_path == str(TEST_DB_PATH)
+    assert {"users", "research_tasks", "evidence_items"}.issubset(tables)
+    assert saved == ("shared database",)
 
 
 def test_claim_history_only_claims_anonymous_tasks(client: TestClient) -> None:
