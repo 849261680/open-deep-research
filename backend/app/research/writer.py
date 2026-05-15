@@ -427,6 +427,7 @@ class ResearchWriter:
                 "evidence_ids": item.evidence_ids,
                 "compressed_evidence": item.compressed_evidence,
                 "verification": item.verification,
+                "source_summary": item.source_summary,
                 "deep_research": item.deep_research.model_dump(),
                 "search_sources": [
                     {
@@ -434,6 +435,8 @@ class ResearchWriter:
                         "link": source.link,
                         "source": source.source,
                         "query": source.query,
+                        "status": source.status,
+                        "failure_reason": source.failure_reason,
                     }
                     for source in item.sources
                 ],

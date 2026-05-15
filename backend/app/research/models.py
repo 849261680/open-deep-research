@@ -37,6 +37,8 @@ class DeepResearchDecision(BaseModel):
 
 
 class ResearchSource(BaseModel):
+    """Search or configured source plus its evidence lifecycle state."""
+
     title: str
     link: str
     source: str = "web"
@@ -44,6 +46,8 @@ class ResearchSource(BaseModel):
     snippet: str = ""
     extracted_content: str = ""
     summary: str = ""
+    status: str = "searched"
+    failure_reason: str = ""
 
 
 class QuestionResearchResult(BaseModel):
@@ -60,6 +64,8 @@ class ResearchContext(BaseModel):
 
 
 class SubQueryContext(BaseModel):
+    """Collected context, sources, and quality metadata for one sub-query."""
+
     step: int
     query: str
     depth: int = 1
@@ -71,3 +77,4 @@ class SubQueryContext(BaseModel):
     verification: dict[str, object] = Field(default_factory=dict)
     deep_research: DeepResearchDecision = Field(default_factory=DeepResearchDecision)
     context: str = ""
+    source_summary: dict[str, int] = Field(default_factory=dict)

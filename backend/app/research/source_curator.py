@@ -130,11 +130,16 @@ class SourceCurator:
         seen_links: set[str] = set()
         unique: list[tuple[ResearchSource, float, bool]] = []
         for source, score, matches_targets in scored:
-            if not source.link or source.link in seen_links:
+            if not source.link:
+                _mark_source(source, "discarded", "missing_link")
+                continue
+            if source.link in seen_links:
+                _mark_source(source, "discarded", "duplicate_link")
                 continue
             seen_links.add(source.link)
             # 过滤掉完全无内容且评分极低的来源
             if not (source.extracted_content or source.snippet) and score < 0.3:
+                _mark_source(source, "discarded", "low_quality")
                 continue
             unique.append((source, score, matches_targets))
 
@@ -146,7 +151,18 @@ class SourceCurator:
         unique.sort(key=lambda pair: pair[1], reverse=True)
 
         # 4. 取 top-N
-        return [source for source, _score, _matches_targets in unique[:max_sources]]
+        selected = unique[:max_sources]
+        for source, _score, _matched_targets in selected:
+            _mark_source(source, "selected")
+        for source, _score, _matched_targets in unique[max_sources:]:
+            _mark_source(source, "discarded", "outside_source_budget")
+        return [source for source, _score, _matched_targets in selected]
+
+
+def _mark_source(source: ResearchSource, status: str, failure_reason: str = "") -> None:
+    """Update source lifecycle state in place for later stream/debug output."""
+    source.status = status
+    source.failure_reason = failure_reason
 
 
 def _normalize_targets(evidence_targets: list[str] | None) -> list[str]:

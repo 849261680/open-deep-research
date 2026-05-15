@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -14,6 +15,7 @@ class ResearchConfig(BaseModel):
 
     max_sub_queries: int = Field(default=5, ge=1, le=10)
     max_concurrency: int = Field(default=3, ge=1, le=8)
+    max_read_pages_per_section: int = Field(default=8, ge=1, le=30)
     deep_research_breadth: int = Field(default=2, ge=0, le=5)
     deep_research_depth: int = Field(default=2, ge=1, le=4)
     retriever: str = "auto"
@@ -26,9 +28,14 @@ class ResearchConfig(BaseModel):
     @classmethod
     def from_env(cls) -> "ResearchConfig":
         """Create task config from RESEARCH_* environment variables."""
-        data: dict[str, object] = {}
+        data: dict[str, Any] = {}
         _set_int_from_env(data, "max_sub_queries", "RESEARCH_MAX_SUB_QUERIES")
         _set_int_from_env(data, "max_concurrency", "RESEARCH_MAX_CONCURRENCY")
+        _set_int_from_env(
+            data,
+            "max_read_pages_per_section",
+            "RESEARCH_MAX_READ_PAGES_PER_SECTION",
+        )
         _set_int_from_env(data, "deep_research_breadth", "RESEARCH_DEEP_RESEARCH_BREADTH")
         _set_int_from_env(data, "deep_research_depth", "RESEARCH_DEEP_RESEARCH_DEPTH")
         _set_str_from_env(data, "retriever", "RESEARCH_RETRIEVER")

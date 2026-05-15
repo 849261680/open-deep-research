@@ -29,6 +29,8 @@ class Citation(BaseModel):
 
 
 class EvidenceItem(BaseModel):
+    """Stored evidence record captured from one source."""
+
     id: str
     section_id: str
     query: str
@@ -37,10 +39,14 @@ class EvidenceItem(BaseModel):
     link: str
     snippet: str
     extracted_content: str = ""
+    status: str = "searched"
+    failure_reason: str = ""
     captured_at: str = Field(default_factory=utc_now)
 
 
 class ResearchSection(BaseModel):
+    """Persisted report section with evidence and source quality metadata."""
+
     id: str
     step: int
     title: str
@@ -64,6 +70,7 @@ class ResearchSection(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
     compressed_evidence: str = ""
     verification: dict[str, object] = Field(default_factory=dict)
+    source_summary: dict[str, int] = Field(default_factory=dict)
     retry_count: int = 0
     started_at: str | None = None
     completed_at: str | None = None

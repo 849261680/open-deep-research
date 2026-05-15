@@ -87,6 +87,7 @@ class TestResearchConfig:
     def test_config_can_be_loaded_from_environment(self, monkeypatch):
         monkeypatch.setenv("RESEARCH_MAX_SUB_QUERIES", "2")
         monkeypatch.setenv("RESEARCH_MAX_CONCURRENCY", "1")
+        monkeypatch.setenv("RESEARCH_MAX_READ_PAGES_PER_SECTION", "4")
         monkeypatch.setenv("RESEARCH_DEEP_RESEARCH_BREADTH", "2")
         monkeypatch.setenv("RESEARCH_DEEP_RESEARCH_DEPTH", "3")
         monkeypatch.setenv("RESEARCH_RETRIEVER", "duckduckgo")
@@ -100,6 +101,7 @@ class TestResearchConfig:
 
         assert config.max_sub_queries == 2
         assert config.max_concurrency == 1
+        assert config.max_read_pages_per_section == 4
         assert config.deep_research_breadth == 2
         assert config.deep_research_depth == 3
         assert config.retriever == "duckduckgo"
@@ -310,6 +312,7 @@ class TestResearchConductor:
                         ],
                     )
                 ]
+                self.config = ResearchConfig(max_read_pages_per_section=2)
 
         conductor = ResearchConductor(ResearcherStub())
         searched_queries: list[str] = []
@@ -358,6 +361,81 @@ class TestResearchConductor:
             "AI 企业采用率 调研 2026",
         ]
         assert [source.query for source in context.sources] == searched_queries
+        assert context.source_summary["read_count"] == 2
+        assert context.source_summary["cited_count"] == 2
+        assert all(source.status == "cited" for source in context.sources)
+
+    def test_process_sub_query_honors_read_budget_and_reports_failures(self, monkeypatch):
+        class ResearcherStub:
+            """Minimal researcher for source lifecycle tests."""
+
+            def __init__(self) -> None:
+                self.query = "AI evidence quality"
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-source-summary"
+                self.repository = None
+                self.config = ResearchConfig(max_read_pages_per_section=1)
+                self.plan_items = [
+                    ResearchPlanItem(
+                        step=1,
+                        title="AI evidence quality",
+                        search_queries=["AI evidence quality"],
+                    )
+                ]
+
+        conductor = ResearchConductor(ResearcherStub())
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            return [
+                ResearchSource(
+                    title="Readable source",
+                    link="https://example.com/readable",
+                    source="web",
+                    query=query,
+                    snippet="source with enough useful evidence",
+                    extracted_content="",
+                ),
+                ResearchSource(
+                    title="Over budget source",
+                    link="https://example.com/over-budget",
+                    source="web",
+                    query=query,
+                    snippet="source outside read budget",
+                    extracted_content="",
+                ),
+            ]
+
+        async def fake_extract(link: str):
+            return "" if link.endswith("readable") else "unexpected"
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return "压缩后的上下文"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {"passed": False, "score": 0.5, "issues": ["empty"], "summary": "gap"}
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(
+            "backend.app.research.scraper.content_extraction_service.extract_content",
+            fake_extract,
+        )
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        context = asyncio.run(conductor._process_sub_query(1, "AI evidence quality"))
+
+        assert len(context.sources) == 1
+        assert context.sources[0].status == "failed"
+        assert context.sources[0].failure_reason == "empty_content"
+        assert context.source_summary["failed_count"] == 1
+        assert context.source_summary["read_count"] == 0
 
     def test_process_sub_query_filters_sources_by_evidence_targets(self, monkeypatch):
         class ResearcherStub:
@@ -1160,6 +1238,46 @@ class TestParseJson:
 
     def test_returns_none_when_root_is_list(self):
         assert self.svc._parse_json("[1, 2, 3]") is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# EvidenceStore
+# ═══════════════════════════════════════════════════════════════════
+
+class TestEvidenceStore:
+    def test_add_many_uses_configurable_extraction_limit(self, monkeypatch):
+        """Missing source content is fetched only within the read budget."""
+        store = EvidenceStore()
+        extracted_links: list[str] = []
+
+        async def fake_extract(link: str):
+            extracted_links.append(link)
+            return f"content for {link}"
+
+        monkeypatch.setattr(
+            "backend.app.services.evidence_store.content_extraction_service.extract_content",
+            fake_extract,
+        )
+
+        import asyncio
+
+        evidence_ids = asyncio.run(
+            store.add_many(
+                section_id="section-1",
+                query="AI evidence",
+                source_type="web",
+                extraction_limit=1,
+                items=[
+                    {"title": "A", "link": "https://a.com", "snippet": "a"},
+                    {"title": "B", "link": "https://b.com", "snippet": "b"},
+                ],
+            )
+        )
+        evidence = store.get_many(evidence_ids)
+
+        assert extracted_links == ["https://a.com"]
+        assert evidence[0].extracted_content == "content for https://a.com"
+        assert evidence[1].extracted_content == ""
 
 
 # ═══════════════════════════════════════════════════════════════════

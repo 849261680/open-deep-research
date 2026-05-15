@@ -24,7 +24,9 @@ class EvidenceStore:
         source_type: str,
         task_id: str | None = None,
         items: list[dict[str, object]],
+        extraction_limit: int = 2,
     ) -> list[str]:
+        """Persist evidence items and fill missing content within a read budget."""
         evidence_ids: list[str] = []
         extraction_targets = [
             str(item.get("link", ""))
@@ -34,7 +36,7 @@ class EvidenceStore:
                 and item.get("link")
                 and not str(item.get("extracted_content", "")).strip()
             )
-        ][:2]
+        ][: max(extraction_limit, 0)]
         extracted_map: dict[str, str] = {}
         if extraction_targets:
             extracted_map = await self._extract_many(extraction_targets)
@@ -54,6 +56,8 @@ class EvidenceStore:
                     extracted_content
                     or extracted_map.get(str(item.get("link", "")), "")
                 ),
+                status=str(item.get("status", "searched")),
+                failure_reason=str(item.get("failure_reason", "")),
             )
             self._evidence[evidence_id] = evidence
             evidence_ids.append(evidence_id)
@@ -71,6 +75,10 @@ class EvidenceStore:
         seen_links: set[str] = set()
         for evidence in self.get_many(evidence_ids):
             if not evidence.link or evidence.link in seen_links:
+                continue
+            if evidence.status in {"failed", "discarded"}:
+                continue
+            if not evidence.extracted_content.strip() and not evidence.snippet.strip():
                 continue
             seen_links.add(evidence.link)
             citations.append(

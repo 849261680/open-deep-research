@@ -151,6 +151,7 @@ class ResearchAgent:
                             "deep_research_stop_condition": section.deep_research_stop_condition,
                             "evidence_gaps": section.evidence_gaps,
                             "follow_up_queries": section.follow_up_queries,
+                            "source_summary": section.source_summary,
                         }
                         for section in task.sections
                     ],
@@ -211,12 +212,15 @@ class ResearchAgent:
                             "link": source.link,
                             "source": source.source,
                             "query": source.query,
+                            "status": source.status,
+                            "failure_reason": source.failure_reason,
                         }
                         for source in context.sources
                     ],
                     evidence_ids=context.evidence_ids,
                     compressed_evidence=context.compressed_evidence,
                     verification=context.verification,
+                    source_summary=context.source_summary,
                     completed_at=utc_now(),
                 )
             )

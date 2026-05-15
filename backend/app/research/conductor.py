@@ -11,6 +11,7 @@ from ..services.verifier_service import verifier_service
 from .context_manager import ResearchContextManager
 from .models import DeepResearchDecision
 from .models import ResearchPlanItem
+from .models import ResearchSource
 from .models import SubQueryContext
 from .query_planner import QueryPlanner
 from .retriever import ResearchRetriever
@@ -278,10 +279,13 @@ class ResearchConductor:
             query=sub_query,
             sources=search_results,
         )
+        read_budget = self._read_budget()
         scraped_sources = await self.scraper.scrape(
             search_results,
             self.researcher.visited_urls,
+            max_sources=read_budget,
         )
+        source_summary = self._source_summary(scraped_sources)
         await self._emit(
             on_event,
             "analysis_progress",
@@ -293,12 +297,20 @@ class ResearchConductor:
                 "queries": [sub_query],
                 "sources": self._serialize_sources(scraped_sources),
                 "read_count": len(scraped_sources),
+                "source_summary": source_summary,
                 "domains": self._extract_domains(scraped_sources),
             },
         )
-        evidence_ids = await self._store_evidence(step, sub_query, scraped_sources)
+        evidence_ids = await self._store_evidence(
+            step,
+            sub_query,
+            scraped_sources,
+            extraction_limit=read_budget,
+        )
         evidence = self.researcher.evidence_store.get_many(evidence_ids)
         citations = self.researcher.evidence_store.get_citations(evidence_ids)
+        self._mark_cited_sources(scraped_sources, citations)
+        source_summary = self._source_summary(scraped_sources)
         compressed_evidence = compression_service.compress_evidence(sub_query, evidence)
         context = await self.context_manager.get_context(sub_query, scraped_sources)
         verification = await verifier_service.verify_section(
@@ -317,6 +329,7 @@ class ResearchConductor:
             compressed_evidence=compressed_evidence,
             verification=verification,
             context=context,
+            source_summary=source_summary,
         )
 
     async def _decide_deeper_research(
@@ -432,12 +445,15 @@ class ResearchConductor:
                 "compressed_evidence": context.compressed_evidence,
                 "verification": context.verification,
                 "deep_research": context.deep_research.model_dump(),
+                "source_summary": context.source_summary,
                 "search_sources": [
                     {
                         "title": source.title,
                         "link": source.link,
                         "source": source.source,
                         "query": source.query,
+                        "status": source.status,
+                        "failure_reason": source.failure_reason,
                     }
                     for source in context.sources
                 ],
@@ -469,7 +485,9 @@ class ResearchConductor:
         step: int,
         sub_query: str,
         sources: list,
+        extraction_limit: int,
     ) -> list[str]:
+        """Store source evidence while honoring the configured read budget."""
         if not sources:
             return []
 
@@ -485,14 +503,41 @@ class ResearchConductor:
                     "snippet": source.snippet,
                     "source_type": source.source,
                     "extracted_content": source.extracted_content,
+                    "status": source.status,
+                    "failure_reason": source.failure_reason,
                 }
                 for source in sources
             ],
+            extraction_limit=extraction_limit,
         )
         if self.researcher.repository is not None and self.researcher.task_id is not None:
             for item in self.researcher.evidence_store.get_many(evidence_ids):
                 self.researcher.repository.save_evidence(self.researcher.task_id, item)
         return evidence_ids
+
+    def _read_budget(self) -> int:
+        """Return the configured source-read budget for one section."""
+        config = getattr(self.researcher, "config", None)
+        return int(getattr(config, "max_read_pages_per_section", 8))
+
+    def _mark_cited_sources(self, sources: list[ResearchSource], citations: list) -> None:
+        """Mark sources that made it into the citation list."""
+        cited_links = {str(citation.link) for citation in citations if getattr(citation, "link", "")}
+        for source in sources:
+            if source.link in cited_links:
+                source.status = "cited"
+                source.failure_reason = ""
+
+    def _source_summary(self, sources: list[ResearchSource]) -> dict[str, int]:
+        """Count source lifecycle states for stream and report metadata."""
+        return {
+            "searched_count": len(sources),
+            "selected_count": sum(1 for source in sources if source.status in {"selected", "read", "cited", "failed"}),
+            "read_count": sum(1 for source in sources if source.status in {"read", "cited"}),
+            "failed_count": sum(1 for source in sources if source.status == "failed"),
+            "cited_count": sum(1 for source in sources if source.status == "cited"),
+            "discarded_count": sum(1 for source in sources if source.status == "discarded"),
+        }
 
     async def _emit(
         self,
@@ -646,6 +691,8 @@ class ResearchConductor:
                     "source": source_type,
                     "query": query,
                     "domain": self._extract_domain(link),
+                    "status": str(getattr(source, "status", "")).strip(),
+                    "failure_reason": str(getattr(source, "failure_reason", "")).strip(),
                 }
             )
         return serialized
