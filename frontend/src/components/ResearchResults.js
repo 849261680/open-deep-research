@@ -63,6 +63,20 @@ const INTERNAL_PLAN_DESCRIPTIONS = new Set(['GPT Researcher sub-query']);
 
 const isInternalPlanText = (value) => INTERNAL_PLAN_DESCRIPTIONS.has(safeTrim(value));
 
+const getQualitySummary = (data) => {
+  const summary = data?.quality_summary;
+  if (!summary || typeof summary !== 'object') return null;
+  const claimCount = Number(summary.claim_count || 0);
+  if (claimCount <= 0) return null;
+  return {
+    claimCount,
+    supported: Number(summary.supported_claim_count || 0),
+    partial: Number(summary.partially_supported_claim_count || 0),
+    unsupported: Number(summary.unsupported_claim_count || 0),
+    supportRate: Number(summary.citation_support_rate || 0),
+  };
+};
+
 const getPlanDescription = (step) => {
   const rationale = safeTrim(step?.rationale);
   if (rationale && !isInternalPlanText(rationale)) return rationale;
@@ -215,9 +229,56 @@ const DeepResearchRecord = ({ step }) => {
   );
 };
 
+const ClaimQualitySummary = ({ summary }) => {
+  if (!summary) return null;
+  const hasUnsupported = summary.unsupported > 0;
+  const Icon = hasUnsupported ? ShieldAlert : ShieldCheck;
+  return (
+    <div
+      className="mb-6 rounded-lg p-4"
+      style={{ background: '#F5F8F2', boxShadow: 'rgba(14,15,12,0.08) 0px 0px 0px 1px' }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Icon
+            className="h-4 w-4"
+            style={{ color: hasUnsupported ? '#b8960a' : '#054d28' }}
+          />
+          <span className="text-sm font-semibold text-text-primary">引用质量摘要</span>
+        </div>
+        <span className="text-xs text-text-secondary font-medium">
+          支撑率 {(summary.supportRate * 100).toFixed(0)}%
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+        <QualityMetric label="关键断言" value={summary.claimCount} />
+        <QualityMetric label="已支撑" value={summary.supported} />
+        <QualityMetric label="部分支撑" value={summary.partial} />
+        <QualityMetric label="未支撑" value={summary.unsupported} warning={hasUnsupported} />
+      </div>
+    </div>
+  );
+};
+
+const QualityMetric = ({ label, value, warning = false }) => (
+  <div
+    className="rounded-lg px-3 py-2"
+    style={{ background: '#FFFFFF', border: '1px solid #E2E5DE' }}
+  >
+    <p className="text-xs font-semibold text-text-tertiary">{label}</p>
+    <p
+      className="mt-1 text-base font-black"
+      style={{ color: warning ? '#b8960a' : '#0e0f0c' }}
+    >
+      {value}
+    </p>
+  </div>
+);
+
 const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
   const planItems = buildPlanDisplayItems(data.plan);
+  const qualitySummary = getQualitySummary(data);
 
   const getVerificationBadge = (verification) => {
     if (!verification || typeof verification !== 'object') return null;
@@ -286,9 +347,12 @@ const ResearchResults = ({ data }) => {
 
       {/* Content */}
       {activeTab === 'report' && (
-        <div className="markdown-content">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.report}</ReactMarkdown>
-        </div>
+        <>
+          <ClaimQualitySummary summary={qualitySummary} />
+          <div className="markdown-content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.report}</ReactMarkdown>
+          </div>
+        </>
       )}
 
       {activeTab === 'process' && (

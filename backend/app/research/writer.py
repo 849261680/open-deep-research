@@ -114,6 +114,147 @@ class ResearchWriter:
             logger.warning("research writer failed: %s", exc)
             return self._fallback_report(query, sections, context, sources)
 
+    def evaluate_claim_support(
+        self,
+        report: str,
+        reference_entries: list[dict[str, str]],
+    ) -> dict[str, object]:
+        """Build claim-level citation support checks for a final report."""
+        valid_numbers = {
+            index
+            for index, entry in enumerate(reference_entries[:20], start=1)
+            if entry.get("link")
+        }
+        claims = [
+            self._claim_support_record(claim, valid_numbers, reference_entries)
+            for claim in self._extract_report_claims(report)
+        ]
+        supported_count = sum(
+            1 for claim in claims if claim["citation_support"] == "supported"
+        )
+        partial_count = sum(
+            1 for claim in claims if claim["citation_support"] == "partially_supported"
+        )
+        unsupported_count = sum(
+            1 for claim in claims if claim["citation_support"] == "unsupported"
+        )
+        return {
+            "claims": claims,
+            "summary": {
+                "claim_count": len(claims),
+                "supported_claim_count": supported_count,
+                "partially_supported_claim_count": partial_count,
+                "unsupported_claim_count": unsupported_count,
+                "citation_support_rate": self._support_rate(
+                    supported_count,
+                    partial_count,
+                    unsupported_count,
+                ),
+            },
+        }
+
+    def _extract_report_claims(self, report: str) -> list[str]:
+        """Extract likely factual claims from the report body."""
+        body = self._report_without_references(report)
+        chunks = re.split(r"(?<=[。！？.!?])\s*|\n+", body)
+        claims: list[str] = []
+        for chunk in chunks:
+            claim = self._clean_claim_text(chunk)
+            if not claim or self._should_skip_claim(claim):
+                continue
+            claims.append(claim)
+        return claims[:80]
+
+    def _report_without_references(self, report: str) -> str:
+        """Remove the deterministic reference section before checking claims."""
+        pattern = re.compile(
+            r"(?im)^#{0,6}\s*(?:8[.、]\s*)?\*{0,2}参考来源\*{0,2}\s*$"
+        )
+        match = pattern.search(report)
+        return report[: match.start()] if match else report
+
+    def _clean_claim_text(self, text: str) -> str:
+        """Normalize one claim candidate from Markdown text."""
+        cleaned = text.strip()
+        cleaned = re.sub(r"^#{1,6}\s*", "", cleaned)
+        cleaned = re.sub(r"^[-*]\s+", "", cleaned)
+        cleaned = re.sub(r"^\d+[.、]\s*", "", cleaned)
+        return cleaned.strip()
+
+    def _should_skip_claim(self, claim: str) -> bool:
+        """Skip headings and fragments that are too small to audit."""
+        if len(claim) < 12:
+            return True
+        if claim.startswith("|") and claim.endswith("|"):
+            return True
+        normalized = claim.strip("*：: ")
+        return normalized in {
+            "执行摘要",
+            "背景与现状",
+            "多维度分析",
+            "关键发现与对比",
+            "争议与不确定性",
+            "趋势与展望",
+            "结论与建议",
+        }
+
+    def _claim_support_record(
+        self,
+        claim: str,
+        valid_numbers: set[int],
+        reference_entries: list[dict[str, str]],
+    ) -> dict[str, object]:
+        """Classify one claim by whether its citation numbers are valid."""
+        citation_numbers = self._citation_numbers(claim)
+        valid_citations = [number for number in citation_numbers if number in valid_numbers]
+        invalid_citations = [
+            number for number in citation_numbers if number not in valid_numbers
+        ]
+        if citation_numbers and not invalid_citations:
+            status = "supported"
+            reason = "引用编号存在于参考来源列表"
+        elif valid_citations:
+            status = "partially_supported"
+            reason = "部分引用编号不存在于参考来源列表"
+        else:
+            status = "unsupported"
+            reason = "缺少有效引用编号" if citation_numbers else "缺少引用编号"
+        return {
+            "text": claim,
+            "citation_numbers": citation_numbers,
+            "citation_support": status,
+            "reason": reason,
+            "citations": [
+                reference_entries[number - 1]
+                for number in valid_citations
+                if 0 < number <= len(reference_entries)
+            ],
+        }
+
+    def _citation_numbers(self, claim: str) -> list[int]:
+        """Return unique bracket citation numbers from one claim."""
+        numbers: list[int] = []
+        seen: set[int] = set()
+        for match in re.finditer(r"\[(\d+)\]", claim):
+            number = int(match.group(1))
+            if number in seen:
+                continue
+            seen.add(number)
+            numbers.append(number)
+        return numbers
+
+    def _support_rate(
+        self,
+        supported_count: int,
+        partial_count: int,
+        unsupported_count: int,
+    ) -> float:
+        """Score full support as 1.0 and partial support as 0.5."""
+        total = supported_count + partial_count + unsupported_count
+        if total == 0:
+            return 0.0
+        return round((supported_count + 0.5 * partial_count) / total, 4)
+
     # ── 上下文格式化（动态 token 分配）──
 
     def _format_context(

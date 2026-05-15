@@ -77,6 +77,8 @@ class ResearchSection(BaseModel):
 
 
 class ResearchTask(BaseModel):
+    """Persisted research task with report, cost, and quality metadata."""
+
     id: str
     user_id: int | None = None
     guest_id: str | None = None
@@ -85,6 +87,8 @@ class ResearchTask(BaseModel):
     sections: list[ResearchSection] = Field(default_factory=list)
     final_report: str = ""
     cost_summary: dict[str, object] = Field(default_factory=dict)
+    quality_summary: dict[str, object] = Field(default_factory=dict)
+    claim_checks: list[dict[str, object]] = Field(default_factory=list)
     created_at: str = Field(default_factory=utc_now)
     updated_at: str = Field(default_factory=utc_now)
     completed_at: str | None = None

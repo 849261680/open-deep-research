@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
+from typing import cast
 
 from ..models.research_task import Citation
 from ..models.research_task import ResearchSection
@@ -114,6 +115,20 @@ class ResearchAgent:
             )
             task.final_report = report
             task.cost_summary = self.cost_tracker.summary()
+            reference_entries = self.writer._collect_reference_entries(
+                self.research_sources,
+                task.sections,
+                contexts,
+            )
+            quality_result = self.writer.evaluate_claim_support(report, reference_entries)
+            task.claim_checks = cast(
+                list[dict[str, object]],
+                quality_result["claims"],
+            )
+            task.quality_summary = cast(
+                dict[str, object],
+                quality_result["summary"],
+            )
             task.status = ResearchTaskStatus.COMPLETED
             task.touch()
             task.completed_at = task.updated_at
@@ -134,6 +149,8 @@ class ResearchAgent:
                     "status": task.status.value,
                     "architecture": "gpt_researcher",
                     "cost_summary": task.cost_summary,
+                    "quality_summary": task.quality_summary,
+                    "claim_checks": task.claim_checks,
                     "plan": [
                         {
                             "step": section.step,

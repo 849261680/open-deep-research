@@ -147,3 +147,36 @@ test('renders markdown pipe tables as actual tables', () => {
   expect(screen.getByRole('cell', { name: '超导' })).toBeInTheDocument();
   expect(screen.queryByText(/\|---\|---/)).not.toBeInTheDocument();
 });
+
+test('renders claim citation quality summary in the report tab', () => {
+  render(
+    <ResearchResults
+      data={{
+        ...resultData,
+        quality_summary: {
+          claim_count: 3,
+          supported_claim_count: 1,
+          partially_supported_claim_count: 1,
+          unsupported_claim_count: 1,
+          citation_support_rate: 0.5,
+        },
+        claim_checks: [
+          {
+            text: 'AI 采用率继续上升 [1]。',
+            citation_support: 'supported',
+          },
+          {
+            text: '该结论缺少来源。',
+            citation_support: 'unsupported',
+          },
+        ],
+      }}
+    />
+  );
+
+  expect(screen.getByText('引用质量摘要')).toBeInTheDocument();
+  expect(screen.getByText('支撑率 50%')).toBeInTheDocument();
+  expect(screen.getByText('关键断言')).toBeInTheDocument();
+  expect(screen.getByText('部分支撑')).toBeInTheDocument();
+  expect(screen.getByText('未支撑')).toBeInTheDocument();
+});

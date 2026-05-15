@@ -913,6 +913,52 @@ class TestResearchWriter:
 
         assert "- [1] A: https://example.com/a\n- [2] B: https://example.com/b" in report
 
+    def test_evaluate_claim_support_flags_unsupported_claims(self):
+        writer = ResearchWriter()
+        report = "\n".join(
+            [
+                "# 报告",
+                "企业 AI 采用率在样本企业中持续上升 [1]。",
+                "该趋势已经覆盖所有行业。",
+                "预算增长来自缺失的引用 [9]。",
+                "## 8. 参考来源",
+                "- [1] Enterprise AI Survey - https://example.com/survey",
+            ]
+        )
+
+        result = writer.evaluate_claim_support(
+            report,
+            [{"title": "Enterprise AI Survey", "link": "https://example.com/survey"}],
+        )
+        summary = result["summary"]
+        claims = result["claims"]
+
+        assert isinstance(summary, dict)
+        assert isinstance(claims, list)
+        assert summary["claim_count"] == 3
+        assert summary["supported_claim_count"] == 1
+        assert summary["unsupported_claim_count"] == 2
+        assert summary["citation_support_rate"] == 0.3333
+        assert claims[0]["citation_support"] == "supported"
+        assert claims[1]["citation_support"] == "unsupported"
+        assert claims[2]["reason"] == "缺少有效引用编号"
+
+    def test_evaluate_claim_support_marks_partial_citations(self):
+        writer = ResearchWriter()
+        result = writer.evaluate_claim_support(
+            "国产量子计算原型机公开了阶段性指标 [1][3]。",
+            [{"title": "Quantum Source", "link": "https://example.com/quantum"}],
+        )
+        summary = result["summary"]
+        claims = result["claims"]
+
+        assert isinstance(summary, dict)
+        assert isinstance(claims, list)
+        assert summary["partially_supported_claim_count"] == 1
+        assert summary["citation_support_rate"] == 0.5
+        assert claims[0]["citation_support"] == "partially_supported"
+        assert claims[0]["citation_numbers"] == [1, 3]
+
 
 class TestSearchTools:
     def test_google_search_uses_thread_offload(self, monkeypatch):

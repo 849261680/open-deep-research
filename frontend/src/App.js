@@ -427,6 +427,8 @@ function AppContent() {
                 expected_outcome: section.expected_outcome,
               })),
               sections: remoteResearch.sections || [],
+              quality_summary: remoteResearch.quality_summary || {},
+              claim_checks: remoteResearch.claim_checks || [],
               results: (remoteResearch.sections || []).map((section) => ({
                 title: section.title,
                 status: section.status,

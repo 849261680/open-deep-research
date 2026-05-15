@@ -72,6 +72,8 @@ export const HistoryProvider = ({ children }) => {
                 status: item.status,
                 sections: item.sections || [],
                 report: item.final_report,
+                quality_summary: item.quality_summary || {},
+                claim_checks: item.claim_checks || [],
                 timestamp: item.completed_at || item.updated_at,
                 plan: (item.sections || []).map((section) => ({
                   step: section.step,
