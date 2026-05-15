@@ -1,0 +1,272 @@
+[
+  {
+    "id": "quantum-computing-applications-2026",
+    "query": "量子计算的最新发展和应用场景",
+    "expected_facts": [
+      "容错量子计算",
+      "量子纠错",
+      "NISQ",
+      "药物发现",
+      "优化问题"
+    ],
+    "preferred_sources": [
+      "ibm.com",
+      "googleblog.com",
+      "nature.com",
+      "arxiv.org",
+      "quantinuum.com"
+    ],
+    "forbidden_claims": [
+      "量子计算已经全面取代经典计算",
+      "所有商业问题都能被量子计算加速"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  },
+  {
+    "id": "ai-regulation-us-eu-china",
+    "query": "美国、欧盟和中国人工智能监管政策对比",
+    "expected_facts": [
+      "EU AI Act",
+      "风险分级",
+      "NIST AI Risk Management Framework",
+      "生成式人工智能服务管理暂行办法",
+      "合规义务"
+    ],
+    "preferred_sources": [
+      "digital-strategy.ec.europa.eu",
+      "nist.gov",
+      "whitehouse.gov",
+      "cac.gov.cn",
+      "oecd.ai"
+    ],
+    "forbidden_claims": [
+      "全球已经采用完全统一的 AI 法规",
+      "欧盟 AI Act 不包含风险分级"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 720,
+      "min_search_count": 6,
+      "min_read_count": 10
+    }
+  },
+  {
+    "id": "ev-battery-recycling-economics",
+    "query": "电动汽车动力电池回收的商业模式和经济性",
+    "expected_facts": [
+      "锂",
+      "镍",
+      "钴",
+      "梯次利用",
+      "回收成本"
+    ],
+    "preferred_sources": [
+      "iea.org",
+      "energy.gov",
+      "europa.eu",
+      "catl.com",
+      "redwoodmaterials.com"
+    ],
+    "forbidden_claims": [
+      "动力电池回收没有环境风险",
+      "所有电池材料都能零成本回收"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  },
+  {
+    "id": "open-source-llm-enterprise-adoption",
+    "query": "开源大语言模型在企业中的落地场景和风险",
+    "expected_facts": [
+      "私有化部署",
+      "数据安全",
+      "推理成本",
+      "模型评测",
+      "许可证"
+    ],
+    "preferred_sources": [
+      "huggingface.co",
+      "meta.com",
+      "mistral.ai",
+      "arxiv.org",
+      "linuxfoundation.org"
+    ],
+    "forbidden_claims": [
+      "开源模型一定比闭源模型更安全",
+      "企业采用开源模型不需要考虑许可证"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  },
+  {
+    "id": "global-semiconductor-supply-chain-risk",
+    "query": "全球半导体供应链的关键风险和缓解策略",
+    "expected_facts": [
+      "台积电",
+      "先进制程",
+      "出口管制",
+      "CHIPS Act",
+      "封装"
+    ],
+    "preferred_sources": [
+      "semiconductors.org",
+      "tsmc.com",
+      "commerce.gov",
+      "asml.com",
+      "oecd.org"
+    ],
+    "forbidden_claims": [
+      "半导体供应链风险已经完全消失",
+      "先进制程产能可以在短期内无限扩张"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 720,
+      "min_search_count": 6,
+      "min_read_count": 10
+    }
+  },
+  {
+    "id": "carbon-removal-market-quality",
+    "query": "碳移除市场的质量标准、MRV 和商业化挑战",
+    "expected_facts": [
+      "MRV",
+      "永久性",
+      "额外性",
+      "直接空气捕集",
+      "碳信用"
+    ],
+    "preferred_sources": [
+      "ipcc.ch",
+      "carbon180.org",
+      "frontierclimate.com",
+      "verra.org",
+      "goldstandard.org"
+    ],
+    "forbidden_claims": [
+      "所有碳信用都具有相同质量",
+      "碳移除已经无需 MRV"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 720,
+      "min_search_count": 6,
+      "min_read_count": 10
+    }
+  },
+  {
+    "id": "ai-agents-software-engineering",
+    "query": "AI 编程智能体在软件工程中的能力边界和评价指标",
+    "expected_facts": [
+      "SWE-bench",
+      "代码审查",
+      "测试生成",
+      "工具调用",
+      "人工监督"
+    ],
+    "preferred_sources": [
+      "swebench.com",
+      "github.blog",
+      "openai.com",
+      "anthropic.com",
+      "arxiv.org"
+    ],
+    "forbidden_claims": [
+      "AI 编程智能体已经不需要人工监督",
+      "所有软件工程任务都能完全自动化"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  },
+  {
+    "id": "healthcare-ai-diagnostics-risk",
+    "query": "医疗 AI 诊断系统的临床价值、风险和监管要求",
+    "expected_facts": [
+      "临床验证",
+      "FDA",
+      "敏感性",
+      "特异性",
+      "偏差"
+    ],
+    "preferred_sources": [
+      "fda.gov",
+      "who.int",
+      "nejm.org",
+      "thelancet.com",
+      "nature.com"
+    ],
+    "forbidden_claims": [
+      "医疗 AI 可以替代所有医生诊断",
+      "医疗 AI 不需要临床验证"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 720,
+      "min_search_count": 6,
+      "min_read_count": 10
+    }
+  },
+  {
+    "id": "robotaxi-commercialization-challenges",
+    "query": "Robotaxi 商业化的技术、监管和单位经济挑战",
+    "expected_facts": [
+      "自动驾驶等级",
+      "安全员",
+      "运营设计域",
+      "监管许可",
+      "单位经济"
+    ],
+    "preferred_sources": [
+      "nhtsa.gov",
+      "waymo.com",
+      "cruise.com",
+      "tesla.com",
+      "ca.gov"
+    ],
+    "forbidden_claims": [
+      "Robotaxi 已经在所有城市完全普及",
+      "自动驾驶没有安全风险"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  },
+  {
+    "id": "space-launch-market-competition",
+    "query": "商业航天发射市场竞争格局和成本下降趋势",
+    "expected_facts": [
+      "可重复使用火箭",
+      "SpaceX",
+      "发射成本",
+      "小卫星",
+      "监管许可"
+    ],
+    "preferred_sources": [
+      "faa.gov",
+      "spacex.com",
+      "esa.int",
+      "nasa.gov",
+      "satellitetoday.com"
+    ],
+    "forbidden_claims": [
+      "商业发射已经没有监管约束",
+      "所有发射服务成本都相同"
+    ],
+    "budget": {
+      "max_elapsed_seconds": 600,
+      "min_search_count": 5,
+      "min_read_count": 8
+    }
+  }
+]
