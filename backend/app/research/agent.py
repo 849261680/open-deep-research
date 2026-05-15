@@ -36,6 +36,7 @@ class ResearchAgent:
         max_sub_queries: int = 5,
         max_concurrency: int = 3,
         config: ResearchConfig | None = None,
+        plan_items: list[ResearchPlanItem] | None = None,
     ) -> None:
         """Create one agent instance for a single research query."""
         resolved_config = config or self._config_from_defaults(
@@ -52,6 +53,7 @@ class ResearchAgent:
         self.research_sources: list[ResearchSource] = []
         self.visited_urls: set[str] = set()
         self.plan_items: list[ResearchPlanItem] = []
+        self.confirmed_plan_items = plan_items or []
         self.repository = repository
         self.task_id: str | None = None
         self.evidence_store = EvidenceStore()

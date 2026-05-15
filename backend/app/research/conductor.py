@@ -47,19 +47,7 @@ class ResearchConductor:
             "正在进行初始搜索并规划子查询...",
             {"query": self.researcher.query},
         )
-        initial_results = await self.retriever.search(self.researcher.query)
-        await self._emit_search_result(
-            on_event,
-            step=0,
-            query=self.researcher.query,
-            sources=initial_results,
-            message="已完成初始搜索，正在归纳研究线索...",
-        )
-        plan_items = await self.query_planner.plan_detailed(
-            query=self.researcher.query,
-            initial_results=initial_results,
-            max_sub_queries=self.researcher.max_sub_queries,
-        )
+        plan_items = await self._plan_items(on_event)
         plan_items = self._ensure_original_query_plan(plan_items)
         sub_queries = [item.title for item in plan_items]
         if self.researcher.query not in sub_queries:
@@ -107,6 +95,28 @@ class ResearchConductor:
         all_sources = [source for item in contexts for source in item.sources]
         self.researcher.research_sources = self.source_curator.curate(all_sources)
         return contexts
+
+    async def _plan_items(
+        self,
+        on_event: ResearchEventCallback | None,
+    ) -> list[ResearchPlanItem]:
+        """Use confirmed plan items or generate a fresh plan from initial search."""
+        confirmed = getattr(self.researcher, "confirmed_plan_items", [])
+        if confirmed:
+            return self._normalize_confirmed_plan_items(confirmed)
+        initial_results = await self.retriever.search(self.researcher.query)
+        await self._emit_search_result(
+            on_event,
+            step=0,
+            query=self.researcher.query,
+            sources=initial_results,
+            message="已完成初始搜索，正在归纳研究线索...",
+        )
+        return await self.query_planner.plan_detailed(
+            query=self.researcher.query,
+            initial_results=initial_results,
+            max_sub_queries=self.researcher.max_sub_queries,
+        )
 
     async def _process_query_tree(
         self,
@@ -195,6 +205,18 @@ class ResearchConductor:
             evidence_targets=["综合资料", "权威来源"],
         )
         return [*plan_items, original_item]
+
+    def _normalize_confirmed_plan_items(
+        self,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[ResearchPlanItem]:
+        """Renumber confirmed plan items after user edits or deletions."""
+        normalized: list[ResearchPlanItem] = []
+        for item in plan_items:
+            normalized.append(item.model_copy(update={"step": len(normalized) + 1}))
+            if len(normalized) >= self.researcher.max_sub_queries:
+                break
+        return normalized
 
     def _serialize_plan_items(
         self,

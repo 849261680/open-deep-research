@@ -142,6 +142,7 @@ class TestResearchConductor:
                 self.sub_queries = []
                 self.context = []
                 self.research_sources = []
+                self.plan_items = []
                 self.evidence_store = EvidenceStore()
                 self.task_id = "task-1"
                 self.repository = repository
@@ -364,6 +365,63 @@ class TestResearchConductor:
         assert context.source_summary["read_count"] == 2
         assert context.source_summary["cited_count"] == 2
         assert all(source.status == "cited" for source in context.sources)
+
+    def test_conductor_uses_confirmed_plan_items(self, monkeypatch):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业趋势"
+                self.max_sub_queries = 3
+                self.max_concurrency = 1
+                self.config = ResearchConfig()
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.sub_queries = []
+                self.context = []
+                self.research_sources = []
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-confirmed-plan"
+                self.repository = None
+                self.confirmed_plan_items = [
+                    ResearchPlanItem(
+                        step=9,
+                        title="AI 产业采用率",
+                        dimension="数据趋势",
+                        rationale="需要量化趋势。",
+                        search_queries=["AI adoption survey"],
+                        expected_outcome="获得采用率数据。",
+                        evidence_targets=["统计数据"],
+                    )
+                ]
+
+        conductor = ResearchConductor(ResearcherStub())
+        monkeypatch.setattr(
+            conductor.retriever,
+            "search",
+            MagicMock(side_effect=AssertionError("confirmed plan should skip planning search")),
+        )
+
+        async def fake_process_query_tree(**kwargs):  # noqa: ANN003
+            return [
+                SubQueryContext(
+                    step=kwargs["step"],
+                    query=kwargs["query"],
+                    context="confirmed context",
+                )
+            ]
+
+        monkeypatch.setattr(conductor, "_process_query_tree", fake_process_query_tree)
+
+        import asyncio
+
+        contexts = asyncio.run(conductor.conduct_research())
+
+        plan_items = getattr(conductor.researcher, "plan_items")
+        assert [item.title for item in plan_items] == [
+            "AI 产业采用率",
+            "AI 产业趋势",
+        ]
+        assert plan_items[0].step == 1
+        assert contexts[0].query == "AI 产业采用率"
 
     def test_process_sub_query_honors_read_budget_and_reports_failures(self, monkeypatch):
         class ResearcherStub:

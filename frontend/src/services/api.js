@@ -15,6 +15,19 @@ const buildDeepResearchConfig = (config = {}) => ({
   ...config,
 });
 
+// 构建研究执行请求，只有确认计划存在时才带 plan_items。
+const buildResearchRequestPayload = (query, stream, options = {}) => {
+  const payload = {
+    query,
+    stream,
+    config: buildDeepResearchConfig(options.config),
+  };
+  if (options.planItems) {
+    payload.plan_items = options.planItems;
+  }
+  return payload;
+};
+
 // 解析 API 地址，避免生产环境静默回退到访问者本机。
 const resolveApiBaseUrl = () => {
   if (process.env.REACT_APP_API_URL) {
@@ -200,11 +213,12 @@ export const researchAPI = {
 
   // 开始研究（流式）
   startResearchStream: async (query, onUpdate, options = {}) => {
-    return researchAPI.streamRequest('/api/research', {
-      query,
-      stream: true,
-      config: buildDeepResearchConfig(options.config),
-    }, onUpdate, options);
+    return researchAPI.streamRequest(
+      '/api/research',
+      buildResearchRequestPayload(query, true, options),
+      onUpdate,
+      options,
+    );
   },
 
   resumeResearchStream: async (taskId, onUpdate, options = {}) => {
@@ -224,11 +238,18 @@ export const researchAPI = {
   // 开始研究（非流式）
   startResearch: async (query, options = {}) => {
     const response = await errorHandler.withRetry(async () => {
-      return await api.post('/api/research', {
-        query: query,
-        stream: false,
-        config: buildDeepResearchConfig(options.config),
-      });
+      return await api.post(
+        '/api/research',
+        buildResearchRequestPayload(query, false, options),
+      );
+    });
+    return response.data;
+  },
+
+  previewResearchPlan: async (query, options = {}) => {
+    const response = await api.post('/api/research/plan', {
+      query,
+      config: buildDeepResearchConfig(options.config),
     });
     return response.data;
   },

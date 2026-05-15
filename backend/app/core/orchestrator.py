@@ -11,6 +11,10 @@ from ..models.research_task import ResearchTask
 from ..models.research_task import ResearchTaskStatus
 from ..research.agent import ResearchAgent
 from ..research.config import ResearchConfig
+from ..research.cost_tracker import CostTracker
+from ..research.models import ResearchPlanItem
+from ..research.query_planner import QueryPlanner
+from ..research.retriever import ResearchRetriever
 from ..services.research_repository import ResearchRepository
 
 
@@ -28,6 +32,7 @@ class ResearchOrchestrator:
         user_id: int | None = None,
         guest_id: str | None = None,
         config: ResearchConfig | None = None,
+        plan_items: list[ResearchPlanItem] | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Create and stream a new research task."""
         task = ResearchTask(
@@ -52,17 +57,21 @@ class ResearchOrchestrator:
                 "timestamp": task.updated_at,
             },
         )
-        async for update in self.run_task(task, config=config):
+        async for update in self.run_task(task, config=config, plan_items=plan_items):
             yield update
 
     async def run_task(
-        self, task: ResearchTask, config: ResearchConfig | None = None
+        self,
+        task: ResearchTask,
+        config: ResearchConfig | None = None,
+        plan_items: list[ResearchPlanItem] | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Run an existing task and persist stream progress."""
         research_agent = ResearchAgent(
             query=task.query,
             repository=self.repository,
             config=config,
+            plan_items=plan_items,
         )
         update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
@@ -116,6 +125,30 @@ class ResearchOrchestrator:
         finally:
             if self._active_tasks.get(task.id) is runner:
                 self._active_tasks.pop(task.id, None)
+
+    async def preview_plan(
+        self,
+        query: str,
+        config: ResearchConfig | None = None,
+    ) -> dict[str, object]:
+        """Generate a user-confirmable research plan without creating a task."""
+        resolved_config = config or ResearchConfig.from_env()
+        cost_tracker = CostTracker()
+        retriever = ResearchRetriever(resolved_config)
+        initial_results = await retriever.search(query)
+        planner = QueryPlanner(cost_tracker)
+        plan_items = await planner.plan_detailed(
+            query=query,
+            initial_results=initial_results,
+            max_sub_queries=resolved_config.max_sub_queries,
+        )
+        plan_items = self._ensure_original_query_plan(query, plan_items)
+        return {
+            "query": query,
+            "plan_items": self._serialize_plan_items(plan_items),
+            "sub_queries": [item.title for item in plan_items],
+            "cost_summary": cost_tracker.summary(),
+        }
 
     def get_history(
         self,
@@ -210,6 +243,34 @@ class ResearchOrchestrator:
     def _event(self, event_type: str, message: str, data: object) -> dict[str, object]:
         """Build one API stream event."""
         return {"type": event_type, "message": message, "data": data}
+
+    def _ensure_original_query_plan(
+        self,
+        query: str,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[ResearchPlanItem]:
+        """Append the original query as a plan item when absent."""
+        if query in {item.title for item in plan_items}:
+            return plan_items
+        return [
+            *plan_items,
+            ResearchPlanItem(
+                step=len(plan_items) + 1,
+                title=query,
+                dimension="核心问题",
+                rationale="保留原始问题作为主线，确保最终报告直接回答用户问题。",
+                search_queries=[query],
+                expected_outcome="形成对原始问题的直接回答和证据汇总。",
+                evidence_targets=["综合资料", "权威来源"],
+            ),
+        ]
+
+    def _serialize_plan_items(
+        self,
+        plan_items: list[ResearchPlanItem],
+    ) -> list[dict[str, object]]:
+        """Serialize structured plan items for API responses."""
+        return [item.model_dump() for item in plan_items]
 
     def _persist_stream_update(
         self, task: ResearchTask, update: object

@@ -190,6 +190,105 @@ def test_research_request_passes_config_to_orchestrator(
     assert captured_config.source_urls == ["https://example.com/a"]
 
 
+def test_research_plan_endpoint_returns_confirmable_plan(
+    monkeypatch, client: TestClient
+) -> None:
+    async def fake_preview_plan(query: str, config=None):  # noqa: ANN001
+        return {
+            "query": query,
+            "plan_items": [
+                {
+                    "step": 1,
+                    "title": "AI 产业采用率",
+                    "dimension": "数据趋势",
+                    "rationale": "需要量化趋势。",
+                    "search_queries": ["AI adoption survey"],
+                    "expected_outcome": "获得采用率数据。",
+                    "evidence_targets": ["统计数据"],
+                }
+            ],
+            "sub_queries": ["AI 产业采用率"],
+            "cost_summary": {},
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.preview_plan",
+        fake_preview_plan,
+    )
+
+    response = client.post(
+        "/api/research/plan",
+        json={"query": "AI 产业趋势"},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "planned"
+    assert payload["data"]["plan_items"][0]["dimension"] == "数据趋势"
+
+
+def test_research_request_passes_confirmed_plan_items(
+    monkeypatch, client: TestClient
+) -> None:
+    captured_plan_items = None
+
+    async def fake_conduct_research(
+        query: str,
+        user_id: int | None = None,
+        guest_id: str | None = None,
+        config=None,  # noqa: ANN001
+        plan_items=None,  # noqa: ANN001
+    ):
+        nonlocal captured_plan_items
+        captured_plan_items = plan_items
+        yield {
+            "type": "report_complete",
+            "message": "done",
+            "data": {
+                "id": "task-plan",
+                "user_id": user_id,
+                "guest_id": guest_id,
+                "query": query,
+                "status": "completed",
+                "plan": [],
+                "sections": [],
+                "results": [],
+                "report": "# planned",
+                "timestamp": "2026-01-01T00:00:00+00:00",
+            },
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.research.research_orchestrator.run",
+        fake_conduct_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": "AI 产业趋势",
+            "stream": False,
+            "plan_items": [
+                {
+                    "step": 1,
+                    "title": "AI 产业采用率",
+                    "dimension": "数据趋势",
+                    "rationale": "需要量化趋势。",
+                    "search_queries": ["AI adoption survey"],
+                    "expected_outcome": "获得采用率数据。",
+                    "evidence_targets": ["统计数据"],
+                }
+            ],
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert captured_plan_items is not None
+    assert captured_plan_items[0].title == "AI 产业采用率"
+
+
 def test_stream_research_emits_error_event_on_failure(
     monkeypatch, client: TestClient
 ) -> None:

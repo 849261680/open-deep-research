@@ -140,7 +140,7 @@ export const useResearchRun = ({
     }
   }, [currentResearch, markResearchStopped]);
 
-  const handleStartResearch = useCallback(async (query) => {
+  const handleStartResearch = useCallback(async (query, options = {}) => {
     const requestController = new AbortController();
     activeRequestControllerRef.current = requestController;
     setIsResearching(true);
@@ -192,7 +192,7 @@ export const useResearchRun = ({
           });
           activeResearchRef.current = null;
         }
-      }, { signal: requestController.signal });
+      }, { signal: requestController.signal, planItems: options.planItems });
     } catch (err) {
       console.error('研究失败:', err);
 
@@ -209,7 +209,9 @@ export const useResearchRun = ({
         errorMessage = '网络连接不稳定，请检查网络连接后重试';
 
         try {
-          const result = await researchAPI.startResearch(query);
+          const result = await researchAPI.startResearch(query, {
+            planItems: options.planItems,
+          });
           const finalData = result.data || result;
           if (finalData.id && finalData.id !== research.id) {
             replaceResearchId(research.id, finalData.id);

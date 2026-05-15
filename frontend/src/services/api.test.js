@@ -83,3 +83,43 @@ test('startResearch sends explicit deep research config for non-stream fallback'
     },
   });
 });
+
+test('previewResearchPlan calls the plan endpoint with deep config', async () => {
+  mockPost.mockResolvedValueOnce({ data: { status: 'planned' } });
+
+  await researchAPI.previewResearchPlan('AI 产业趋势');
+
+  expect(mockPost).toHaveBeenCalledWith('/api/research/plan', {
+    query: 'AI 产业趋势',
+    config: {
+      report_type: 'deep',
+      deep_research_breadth: 2,
+      deep_research_depth: 2,
+    },
+  });
+});
+
+test('startResearchStream sends confirmed plan items when provided', async () => {
+  const fetchMock = jest.fn().mockResolvedValue({
+    ok: true,
+    body: {
+      getReader: () => ({
+        read: jest.fn().mockResolvedValue({ done: true, value: undefined }),
+      }),
+    },
+  });
+  global.fetch = fetchMock;
+
+  await researchAPI.startResearchStream('AI 产业趋势', jest.fn(), {
+    planItems: [
+      {
+        step: 1,
+        title: 'AI 产业采用率',
+        search_queries: ['AI adoption survey'],
+      },
+    ],
+  });
+
+  const requestPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+  expect(requestPayload.plan_items[0].title).toBe('AI 产业采用率');
+});

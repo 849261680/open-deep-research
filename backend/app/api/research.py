@@ -14,6 +14,7 @@ from ..core.deps import resolve_guest_id
 from ..core.orchestrator import research_orchestrator
 from ..models.user import User
 from ..research.config import ResearchConfig
+from ..research.models import ResearchPlanItem
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,24 @@ router = APIRouter()
 class ResearchRequest(BaseModel):
     query: str
     stream: bool | None = True
+    config: ResearchConfig | None = None
+    plan_items: list[ResearchPlanItem] | None = None
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("研究问题不能为空")
+        if len(v) > 500:
+            raise ValueError("研究问题不能超过500个字符")
+        return v
+
+
+class ResearchPlanRequest(BaseModel):
+    """Request body for generating a confirmable plan."""
+
+    query: str
     config: ResearchConfig | None = None
 
     @field_validator("query")
@@ -85,8 +104,7 @@ async def start_research(
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
             try:
-                run_kwargs = _run_kwargs(request, user_id, guest_id)
-                async for update in research_orchestrator.run(**run_kwargs):
+                async for update in _research_updates(request, user_id, guest_id):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
@@ -104,8 +122,7 @@ async def start_research(
     try:
         results = []
         final_payload: dict[str, object] | None = None
-        run_kwargs = _run_kwargs(request, user_id, guest_id)
-        async for update in research_orchestrator.run(**run_kwargs):
+        async for update in _research_updates(request, user_id, guest_id):
             results.append(update)
             if update.get("type") == "report_complete" and isinstance(
                 update.get("data"), dict
@@ -122,20 +139,59 @@ async def start_research(
         raise HTTPException(status_code=500, detail="研究失败，请稍后重试") from e
 
 
-def _run_kwargs(
+def _research_updates(
     request: ResearchRequest,
     user_id: int | None,
     guest_id: str | None,
-) -> dict[str, object]:
-    """Build orchestrator arguments without changing old no-config calls."""
-    kwargs: dict[str, object] = {
-        "query": request.query,
-        "user_id": user_id,
-        "guest_id": guest_id,
-    }
-    if request.config is not None:
-        kwargs["config"] = request.config
-    return kwargs
+) -> AsyncGenerator[dict[str, object], None]:
+    """Call orchestrator with only the optional kwargs the client provided."""
+    if request.config is None and request.plan_items is None:
+        return research_orchestrator.run(
+            query=request.query,
+            user_id=user_id,
+            guest_id=guest_id,
+        )
+    if request.plan_items is None:
+        return research_orchestrator.run(
+            query=request.query,
+            user_id=user_id,
+            guest_id=guest_id,
+            config=request.config,
+        )
+    if request.config is None:
+        return research_orchestrator.run(
+            query=request.query,
+            user_id=user_id,
+            guest_id=guest_id,
+            plan_items=request.plan_items,
+        )
+    return research_orchestrator.run(
+        query=request.query,
+        user_id=user_id,
+        guest_id=guest_id,
+        config=request.config,
+        plan_items=request.plan_items,
+    )
+
+
+@router.post("/research/plan", response_model=ResearchResponse)
+async def preview_research_plan(
+    request: ResearchPlanRequest,
+) -> ResearchResponse:
+    """Generate a research plan for user confirmation before execution."""
+    try:
+        plan_payload = await research_orchestrator.preview_plan(
+            request.query,
+            config=request.config,
+        )
+        return ResearchResponse(
+            query=request.query,
+            status="planned",
+            data=plan_payload,
+        )
+    except Exception as e:
+        logger.exception("研究计划生成失败 query=%r", request.query)
+        raise HTTPException(status_code=500, detail="研究计划生成失败，请稍后重试") from e
 
 
 @router.post("/research/resume", response_model=None)

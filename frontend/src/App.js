@@ -7,6 +7,7 @@ import ResearchResults from './components/ResearchResults';
 import LoadingSpinner from './components/LoadingSpinner';
 import StreamingResults from './components/StreamingResults';
 import EmptyState from './components/EmptyState';
+import PlanConfirmation from './components/PlanConfirmation';
 import { HistoryProvider, useHistory } from './contexts/HistoryContext';
 import { AuthProvider } from './contexts/AuthContext';
 import AuthPage from './components/AuthPage';
@@ -21,6 +22,9 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [planDraft, setPlanDraft] = useState(null);
+  const [planError, setPlanError] = useState(null);
 
   const {
     currentResearch,
@@ -83,14 +87,44 @@ function AppContent() {
 
   const handleNewResearchClick = () => {
     handleNewResearch();
+    setPlanDraft(null);
+    setPlanError(null);
     closeMobileSidebar();
   };
 
-  const handleExampleClick = (question) => {
-    handleStartResearch(question);
+  const handlePlanRequest = async (query) => {
+    setIsPlanning(true);
+    setPlanError(null);
+    setPlanDraft(null);
+    try {
+      const response = await researchAPI.previewResearchPlan(query);
+      const data = response.data || response;
+      setPlanDraft({
+        query,
+        plan_items: data.plan_items || [],
+      });
+    } catch (err) {
+      console.error('研究计划生成失败:', err);
+      setPlanError('研究计划生成失败，请稍后重试。');
+    } finally {
+      setIsPlanning(false);
+    }
   };
 
-  const showEmptyState = !isResearching && !researchData && !currentResearch;
+  const handleConfirmPlan = (planItems) => {
+    if (!planDraft) return;
+    const query = planDraft.query;
+    setPlanDraft(null);
+    setPlanError(null);
+    handleStartResearch(query, { planItems });
+  };
+
+  const handleExampleClick = (question) => {
+    handlePlanRequest(question);
+  };
+
+  const visibleError = planError || error;
+  const showEmptyState = !isPlanning && !isResearching && !researchData && !currentResearch && !planDraft;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-white">
@@ -119,15 +153,15 @@ function AppContent() {
             {!showEmptyState && (
               <div className="mb-8">
                 <SearchForm
-                  onSubmit={handleStartResearch}
+                  onSubmit={handlePlanRequest}
                   onStop={handleStopResearch}
                   isLoading={isResearching}
-                  disabled={backendStatus === 'offline'}
+                  disabled={backendStatus === 'offline' || isPlanning}
                 />
               </div>
             )}
 
-            {error && !showEmptyState && (
+            {visibleError && !showEmptyState && (
               <div
                 className="mb-8"
                 style={{
@@ -146,10 +180,26 @@ function AppContent() {
                     <AlertCircle className="w-4 h-4" />
                   </span>
                   <p style={{ color: '#0e0f0c', fontSize: '16px', fontWeight: 600, lineHeight: 1.4, margin: 0 }}>
-                    {error}
+                    {visibleError}
                   </p>
                 </div>
               </div>
+            )}
+
+            {isPlanning && (
+              <div className="mt-8">
+                <LoadingSpinner message="正在生成研究计划..." />
+              </div>
+            )}
+
+            {planDraft && !isPlanning && !isResearching && (
+              <PlanConfirmation
+                plan={planDraft}
+                onChange={setPlanDraft}
+                onConfirm={handleConfirmPlan}
+                onCancel={() => setPlanDraft(null)}
+                isLoading={isResearching}
+              />
             )}
 
             {isResearching && (
