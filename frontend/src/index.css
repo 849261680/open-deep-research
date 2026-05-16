@@ -270,6 +270,35 @@ code, pre {
   transition: all 200ms ease-out;
 }
 
+.loading-dots {
+  display: inline-flex;
+  width: 1.1em;
+  justify-content: flex-start;
+}
+
+.loading-dots span {
+  animation: loading-dot 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes loading-dot {
+  0%, 60%, 100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
 /* Wise-style button scale animations */
 .btn-scale {
   transition: transform 150ms ease, box-shadow 150ms ease;

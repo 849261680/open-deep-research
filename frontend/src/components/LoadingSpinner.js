@@ -1,6 +1,9 @@
 import React from 'react';
 
 const LoadingSpinner = ({ message = '处理中...' }) => {
+  const trimmedMessage = message.replace(/[.…]+$/, '');
+  const hasAnimatedDots = trimmedMessage !== message;
+
   return (
     <div className="flex flex-col items-center justify-center py-16">
       {/* Wise-green animated ring */}
@@ -22,15 +25,17 @@ const LoadingSpinner = ({ message = '处理中...' }) => {
 
       <p
         className="text-text-primary text-center"
+        aria-label={message}
         style={{ fontSize: '18px', fontWeight: 600, lineHeight: 1.44 }}
       >
-        {message}
-      </p>
-      <p
-        className="mt-2 text-text-tertiary text-center"
-        style={{ fontSize: '14px', fontWeight: 400, lineHeight: 1.5 }}
-      >
-        通常需要 30–60 秒
+        {trimmedMessage}
+        {hasAnimatedDots && (
+          <span className="loading-dots" aria-hidden="true">
+            <span>.</span>
+            <span>.</span>
+            <span>.</span>
+          </span>
+        )}
       </p>
     </div>
   );
