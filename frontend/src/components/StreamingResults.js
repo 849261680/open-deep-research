@@ -161,6 +161,7 @@ const StreamingResults = ({ updates }) => {
     const completedCount = completedSteps.size;
     const activeCount = activeQueries.size;
     const activeQueryList = Array.from(activeQueries.values());
+    const visibleTotalSteps = Math.max(totalSteps, completedCount + activeCount);
 
     switch (phase) {
       case 'planning':
@@ -169,7 +170,7 @@ const StreamingResults = ({ updates }) => {
         return { type: statusType, timestamp, title: '研究任务已创建', detail: '准备规划研究路径。', activeItems: [] };
       case 'researching': {
         const detailParts = [];
-        if (totalSteps > 0) detailParts.push(`已完成 ${completedCount}/${totalSteps}`);
+        if (totalSteps > 0) detailParts.push(`已完成 ${completedCount}/${visibleTotalSteps}`);
         if (activeCount > 0) detailParts.push(`进行中 ${activeCount}`);
         let title = '正在执行研究';
         if (activeCount > 0) title = activeCount > 1 ? `正在并行研究 ${activeCount} 个子查询` : '正在研究子查询';

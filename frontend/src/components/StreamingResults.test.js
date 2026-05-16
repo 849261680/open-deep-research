@@ -44,6 +44,58 @@ test('current status follows the latest active research phase', () => {
   expect(screen.queryByText('研究任务已创建')).not.toBeInTheDocument();
 });
 
+test('current status expands total when deep research adds active queries', () => {
+  render(
+    <StreamingResults
+      updates={[
+        ...updates,
+        {
+          type: 'step_complete',
+          message: '完成子查询：市场规模',
+          data: {
+            step: 1,
+            title: '市场规模',
+          },
+        },
+        {
+          type: 'step_complete',
+          message: '完成子查询：竞争格局',
+          data: {
+            step: 2,
+            title: '竞争格局',
+          },
+        },
+        {
+          type: 'step_start',
+          message: '开始处理子查询 101',
+          data: {
+            step: 101,
+            total: 2,
+            query: '海外市场规模',
+            title: '海外市场规模',
+          },
+        },
+        {
+          type: 'step_start',
+          message: '开始处理子查询 102',
+          data: {
+            step: 102,
+            total: 2,
+            query: '企业采购案例',
+            title: '企业采购案例',
+          },
+        },
+      ]}
+    />
+  );
+
+  const currentStatus = screen.getByText('当前状态').closest('div');
+
+  expect(within(currentStatus).getByText('正在并行研究 2 个子查询')).toBeInTheDocument();
+  expect(within(currentStatus).getByText('已完成 2/4，进行中 2')).toBeInTheDocument();
+  expect(within(currentStatus).queryByText('已完成 2/2，进行中 2')).not.toBeInTheDocument();
+});
+
 test('initial search result stays in planning status before sub-query plan exists', () => {
   render(
     <StreamingResults
