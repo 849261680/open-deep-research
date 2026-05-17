@@ -90,7 +90,7 @@ uv run basedpyright backend/app tests → 0 errors, 0 warnings
 npm run build (frontend)             → Compiled successfully
 ```
 
-## 📊 Eval Baseline（10 个 Smoke Eval 任务）
+## 📊 Eval Baseline（10 个 Smoke Eval 任务，depth=1/breadth=0 快速基线）
 
 | 指标 | 值 |
 |------|---:|
@@ -100,6 +100,7 @@ npm run build (frontend)             → Compiled successfully
 | 平均 Unsupported Claims | 48.7 |
 | 平均搜索/阅读/耗时 | 7 searches / 12 reads / 94s |
 
+> 使用降低的搜索深度（depth=1, breadth=0）快速建立基线。生产默认配置为 depth=2, breadth=2。
 > 详细报告见 [`output/eval_baseline.md`](output/eval_baseline.md)
 
 ## 🚀 快速开始
