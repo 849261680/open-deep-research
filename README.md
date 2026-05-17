@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-blue?style=for-the-badge&logo=graphql)
+![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-blue?style=flat&logo=graphql)
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat&logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green?style=flat&logo=fastapi)
 ![React](https://img.shields.io/badge/React-18+-blue?style=flat&logo=react)
