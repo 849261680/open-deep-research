@@ -1,52 +1,93 @@
-# Research Agent - 深度研究智能体 
+# Deep Research Agent
 
 <div align="center">
 
-![Research Agent](https://img.shields.io/badge/Research-Agent-blue?style=for-the-badge&logo=openai)
+![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-blue?style=for-the-badge&logo=graphql)
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat&logo=python)
-![React](https://img.shields.io/badge/React-18+-blue?style=flat&logo=react)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green?style=flat&logo=fastapi)
+![React](https://img.shields.io/badge/React-18+-blue?style=flat&logo=react)
 ![LangChain](https://img.shields.io/badge/LangChain-Latest-purple?style=flat)
-![uv](https://img.shields.io/badge/uv-Latest-orange?style=flat&logo=python)
 
-**基于 LangChain 和 DeepSeek 的 DeepResearch Agent - 使用 uv 管理依赖**
+**从零实现的深度研究 Agent，基于 LangGraph StateGraph 编排**
 
-[功能特色](#-功能特色) • [快速开始](#-快速开始) • [部署指南](#-部署指南)
+[架构](#-架构) • [核心能力](#-核心能力) • [快速开始](#-快速开始) • [部署指南](#-部署指南)
 
 </div>
 
-## 🚀 项目简介
+---
 
-Deep Research Agent 是一个基于 AI 的智能研究助手，能够自动制定研究计划、执行多源搜索、分析内容并生成专业的研究报告。
+> **一句话定位**：一个从零实现的 Deep Research Agent，支持用户确认研究计划、并发子查询搜索、递归证据深挖、claim-level 引用校验、SSE 流式进度推送，以及 smoke eval 评测框架；研究流程通过 LangGraph `StateGraph` 编排（`plan_queries → research_queries → curate_sources`）。
 
+## 📐 架构
+
+```mermaid
+graph TD
+    User["👤 用户输入研究主题"] --> Plan["plan_queries<br/>生成/确认研究计划"]
+    Plan --> Research["research_queries<br/>并发子查询执行"]
+    Research --> Deep{"递归深挖？<br/>(depth < max_depth)"}
+    Deep -->|"证据不足"| Research
+    Deep -->|"证据充分"| Curate["curate_sources<br/>来源整理 & 去重"]
+    
+    subgraph "子查询内部流程"
+        Search["🔍 Tavily 搜索"] --> Scrape["📄 网页抓取"]
+        Scrape --> Evidence["📦 EvidenceStore<br/>证据存储"]
+        Evidence --> Verify["✅ VerifierService<br/>claim-level 校验"]
+    end
+    
+    Research --> Search
+    Curate --> Writer["📝 ResearchWriter<br/>生成结构化报告"]
+    Writer --> Report["📊 最终报告 + 引用"]
+    
+    style Plan fill:#4f46e5,color:#fff
+    style Research fill:#4f46e5,color:#fff
+    style Curate fill:#4f46e5,color:#fff
+    style Deep fill:#f59e0b,color:#fff
+    style Verify fill:#10b981,color:#fff
+```
+
+**LangGraph StateGraph 节点说明**：
+
+| 节点 | 职责 |
+|------|------|
+| `plan_queries` | 初始搜索 → 生成结构化研究计划（维度、搜索策略、预期成果）→ 用户可确认/编辑 |
+| `research_queries` | 并发执行子查询，每个查询走 搜索→抓取→证据→校验 流程，支持递归深挖 |
+| `curate_sources` | 汇总所有子查询结果，去重排序，更新 agent state |
 
 ## 📋 核心能力
 
-- **智能计划制定** - 基于 DeepSeek AI 自动生成结构化研究计划
-- **LangGraph 工作流** - 使用 StateGraph 编排计划、研究执行和来源整理节点
-- **多源数据搜索** - 集成 Tavily Search 等多个搜索引擎
-- **实时进度追踪** - 动态显示搜索过程和结果详情
-- **专业报告生成** - 自动分析并生成结构化研究报告
-- **流式用户体验** - 实时显示研究进展和中间结果
+| 能力 | 实现 |
+|------|------|
+| **LangGraph 工作流** | `StateGraph` 编排三阶段研究流程，状态在节点间显式传递 |
+| **可确认研究计划** | 用户可审阅、编辑 AI 生成的子查询计划后再执行 |
+| **并发子查询** | `asyncio.Semaphore` 控制并发，多维度同时搜索 |
+| **递归深挖** | `deep_research_depth/breadth` 控制递归深度和广度，自动发现证据缺口 |
+| **证据存储** | `EvidenceStore` 管理证据生命周期（searched → selected → read → cited/discarded） |
+| **引用校验** | `VerifierService` + `ResearchWriter.evaluate_claim_support()` 进行 claim-level 质量评估 |
+| **证据压缩** | 压缩长文本证据，保留关键信息供报告生成使用 |
+| **流式进度** | SSE 实时推送研究进度（plan → search → analysis → report） |
+| **成本追踪** | `CostTracker` 记录 token 用量和估算成本 |
+| **Eval 框架** | 10 个 smoke eval 任务 + 自动打分器，覆盖多维度研究质量 |
+| **持久化** | SQLite 持久化研究任务和 checkpoint，支持中断恢复 |
 
 ## 🛠️ 技术栈
 
-### 后端技术
+| 层级 | 技术 |
+|------|------|
+| **Agent 编排** | LangGraph StateGraph |
+| **LLM** | DeepSeek API（via LangChain） |
+| **搜索** | Tavily Search API |
+| **后端** | Python 3.10+ / FastAPI / uv |
+| **前端** | React 18 / Tailwind CSS |
+| **类型检查** | basedpyright（0 errors） |
+| **测试** | pytest（113 passed） |
 
-- **Python 3.10+** - 核心开发语言
-- **uv** - 现代 Python 包管理工具
-- **FastAPI** - 高性能 Web 框架
-- **LangChain** - AI 应用开发框架
-- **LangGraph** - Agent 工作流图编排
-- **DeepSeek API** - 大语言模型服务
-- **Tavily Search** - 搜索引擎集成
+## ✅ 验证状态
 
-### 前端技术
-
-- **React 18** - 用户界面框架
-- **Tailwind CSS** - 样式框架
-- **Lucide React** - 图标库
-- **Axios** - HTTP 客户端
+```
+uv run python -m pytest tests -q    → 113 passed
+uv run basedpyright backend/app tests → 0 errors, 0 warnings
+npm run build (frontend)             → Compiled successfully
+```
 
 ## 🚀 快速开始
 
