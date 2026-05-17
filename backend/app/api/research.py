@@ -10,6 +10,9 @@ from pydantic import BaseModel, field_validator
 
 from ..core.deps import get_current_user
 from ..core.deps import get_optional_current_user
+from ..core.logging import bind_request_id
+from ..core.logging import get_request_id
+from ..core.logging import reset_request_id
 from ..core.deps import resolve_guest_id
 from ..core.orchestrator import research_orchestrator
 from ..models.user import User
@@ -70,14 +73,22 @@ class StopResearchRequest(BaseModel):
     task_id: str
 
 
-def _stream_error_payload(message: str, exc: Exception) -> dict[str, object]:
-    data: dict[str, object] | None = None
+def _stream_error_payload(
+    message: str,
+    exc: Exception,
+    *,
+    request_id: str,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    data: dict[str, object] = {"request_id": request_id}
+    if task_id:
+        data["task_id"] = task_id
     if os.getenv("RESEARCH_STREAM_INCLUDE_ERROR_DETAIL", "").lower() in {
         "1",
         "true",
         "yes",
     }:
-        data = {"detail": str(exc)}
+        data["detail"] = str(exc)
     return {
         "type": "error",
         "message": message,
@@ -98,21 +109,34 @@ async def start_research(
     current_user: User | None = Depends(get_optional_current_user),
 ) -> StreamingResponse | ResearchResponse:
     """开始研究任务"""
+    request_id = get_request_id(http_request)
     user_id = current_user.id if current_user else None
     guest_id = None if current_user else resolve_guest_id(http_request)
 
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
+            token = bind_request_id(request_id)
+            task_id: str | None = None
             try:
                 async for update in _research_updates(request, user_id, guest_id):
+                    task_id = _task_id_from_update(update) or task_id
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
-                logger.exception("研究任务执行失败 query=%r user_id=%s", request.query, user_id)
+                logger.exception(
+                    "研究任务执行失败 query=%r user_id=%s",
+                    request.query,
+                    user_id,
+                    extra={"request_id": request_id, "task_id": task_id},
+                )
                 error_update = _stream_error_payload(
                     "研究过程中发生错误，请稍后重试",
                     exc,
+                    request_id=request_id,
+                    task_id=task_id,
                 )
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
+            finally:
+                reset_request_id(token)
 
         return StreamingResponse(
             generate(),
@@ -120,14 +144,17 @@ async def start_research(
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
     try:
+        token = bind_request_id(request_id)
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in _research_updates(request, user_id, guest_id):
-            results.append(update)
-            if update.get("type") == "report_complete" and isinstance(
-                update.get("data"), dict
-            ):
-                final_payload = dict(update["data"])
+        try:
+            async for update in _research_updates(request, user_id, guest_id):
+                results.append(update)
+                data = update.get("data")
+                if update.get("type") == "report_complete" and isinstance(data, dict):
+                    final_payload = data
+        finally:
+            reset_request_id(token)
 
         return ResearchResponse(
             query=request.query,
@@ -135,8 +162,24 @@ async def start_research(
             data=final_payload or {"updates": results},
         )
     except Exception as e:
-        logger.exception("研究任务执行失败（非流式）query=%r user_id=%s", request.query, user_id)
+        logger.exception(
+            "研究任务执行失败（非流式）query=%r user_id=%s",
+            request.query,
+            user_id,
+            extra={"request_id": request_id, "task_id": None},
+        )
         raise HTTPException(status_code=500, detail="研究失败，请稍后重试") from e
+
+
+def _task_id_from_update(update: object) -> str | None:
+    """Read the current task id from a streamed event payload."""
+    if not isinstance(update, dict):
+        return None
+    data = update.get("data")
+    if not isinstance(data, dict):
+        return None
+    candidate = data.get("task_id") or data.get("id")
+    return candidate if isinstance(candidate, str) and candidate else None
 
 
 def _research_updates(
@@ -204,11 +247,13 @@ async def resume_research(
     if not request.task_id.strip():
         raise HTTPException(status_code=400, detail="任务ID不能为空")
 
+    request_id = get_request_id(http_request)
     user_id = current_user.id if current_user else None
     guest_id = None if current_user else resolve_guest_id(http_request)
 
     if request.stream:
         async def generate() -> AsyncGenerator[str, None]:
+            token = bind_request_id(request_id)
             try:
                 async for update in research_orchestrator.resume_task(
                     request.task_id,
@@ -217,12 +262,21 @@ async def resume_research(
                 ):
                     yield f"data: {json.dumps(update, ensure_ascii=False)}\n\n"
             except Exception as exc:
-                logger.exception("恢复研究任务失败 task_id=%r user_id=%s", request.task_id, user_id)
+                logger.exception(
+                    "恢复研究任务失败 task_id=%r user_id=%s",
+                    request.task_id,
+                    user_id,
+                    extra={"request_id": request_id, "task_id": request.task_id},
+                )
                 error_update = _stream_error_payload(
                     "恢复研究过程中发生错误，请稍后重试",
                     exc,
+                    request_id=request_id,
+                    task_id=request.task_id,
                 )
                 yield f"data: {json.dumps(error_update, ensure_ascii=False)}\n\n"
+            finally:
+                reset_request_id(token)
 
         return StreamingResponse(
             generate(),
@@ -231,18 +285,24 @@ async def resume_research(
         )
 
     try:
+        token = bind_request_id(request_id)
         results = []
         final_payload: dict[str, object] | None = None
-        async for update in research_orchestrator.resume_task(
-            request.task_id,
-            user_id=user_id,
-            guest_id=guest_id,
-        ):
-            results.append(update)
-            if update.get("type") in {"report_complete", "error"} and isinstance(
-                update.get("data"), dict
+        try:
+            async for update in research_orchestrator.resume_task(
+                request.task_id,
+                user_id=user_id,
+                guest_id=guest_id,
             ):
-                final_payload = dict(update["data"])
+                results.append(update)
+                data = update.get("data")
+                if update.get("type") in {"report_complete", "error"} and isinstance(
+                    data,
+                    dict,
+                ):
+                    final_payload = data
+        finally:
+            reset_request_id(token)
 
         return ResearchResponse(
             query=final_payload.get("query", "") if final_payload else "",
@@ -250,7 +310,12 @@ async def resume_research(
             data=final_payload or {"updates": results},
         )
     except Exception as e:
-        logger.exception("恢复研究任务失败（非流式）task_id=%r user_id=%s", request.task_id, user_id)
+        logger.exception(
+            "恢复研究任务失败（非流式）task_id=%r user_id=%s",
+            request.task_id,
+            user_id,
+            extra={"request_id": request_id, "task_id": request.task_id},
+        )
         raise HTTPException(status_code=500, detail="恢复研究失败，请稍后重试") from e
 
 

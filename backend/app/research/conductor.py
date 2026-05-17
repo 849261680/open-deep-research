@@ -612,6 +612,7 @@ class ResearchConductor:
             "research_plan_created",
             extra={
                 "task_id": getattr(self.researcher, "task_id", None),
+                "request_id": getattr(self.researcher, "request_id", None),
                 "query": self.researcher.query,
                 "plan_items_count": len(plan_items),
                 "dimensions": [item.dimension for item in plan_items if item.dimension],
@@ -1048,6 +1049,7 @@ class ResearchConductor:
             event_type,
             extra={
                 "task_id": getattr(self.researcher, "task_id", None),
+                "request_id": getattr(self.researcher, "request_id", None),
                 "research_event_type": event_type,
                 **self._log_fields_for_event(event_type, data),
             },

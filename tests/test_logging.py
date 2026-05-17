@@ -47,9 +47,13 @@ def test_health_request_writes_http_log(caplog) -> None:
     caplog.set_level(logging.INFO, logger="backend.http")
 
     with TestClient(app) as client:
-        response = client.get("/api/health")
+        response = client.get(
+            "/api/health",
+            headers={"X-Request-ID": "req-health"},
+        )
 
     assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "req-health"
 
     request_logs = [
         record for record in caplog.records if record.name == "backend.http"
@@ -57,6 +61,7 @@ def test_health_request_writes_http_log(caplog) -> None:
     assert len(request_logs) == 1
     record = request_logs[0]
     assert record.getMessage() == "http_request"
+    assert record.request_id == "req-health"
     assert record.method == "GET"
     assert record.path == "/api/health"
     assert record.status == "200"

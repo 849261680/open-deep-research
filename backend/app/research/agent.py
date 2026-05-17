@@ -38,6 +38,7 @@ class ResearchAgent:
         max_concurrency: int = 3,
         config: ResearchConfig | None = None,
         plan_items: list[ResearchPlanItem] | None = None,
+        request_id: str | None = None,
     ) -> None:
         """Create one agent instance for a single research query."""
         resolved_config = config or self._config_from_defaults(
@@ -58,6 +59,7 @@ class ResearchAgent:
         self.confirmed_plan_items = plan_items or []
         self.repository = repository
         self.task_id: str | None = None
+        self.request_id = request_id
         self.evidence_store = EvidenceStore()
         self.cost_tracker = CostTracker()
         self.conductor = ResearchConductor(self)
@@ -154,6 +156,7 @@ class ResearchAgent:
                 "data": {
                     "id": task.id,
                     "user_id": task.user_id,
+                    "request_id": self.request_id,
                     "query": task.query,
                     "status": task.status.value,
                     "architecture": "gpt_researcher",
@@ -528,6 +531,7 @@ class ResearchAgent:
             "report_complete",
             extra={
                 "task_id": task.id,
+                "request_id": self.request_id,
                 "research_event_type": "report_complete",
                 "query": task.query,
                 "status": task.status.value,

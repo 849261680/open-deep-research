@@ -238,6 +238,7 @@ class TestResearchConductor:
                 self.research_sources = []
                 self.evidence_store = EvidenceStore()
                 self.task_id = "task-plan"
+                self.request_id = "req-plan"
                 self.repository = None
 
         conductor = ResearchConductor(ResearcherStub())
@@ -297,6 +298,7 @@ class TestResearchConductor:
         assert step_start["data"]["description"] == "数据趋势：需要量化判断市场变化。"
         assert step_start["data"]["queries"] == plan_item.search_queries
         assert plan_log.task_id == "task-plan"
+        assert plan_log.request_id == "req-plan"
         assert plan_log.query == "AI 产业趋势"
         assert plan_log.plan_items_count == 2
         assert plan_log.dimensions == ["数据趋势", "核心问题"]
@@ -591,6 +593,7 @@ class TestResearchConductor:
                 self.research_sources = []
                 self.evidence_store = EvidenceStore()
                 self.task_id = "task-deep"
+                self.request_id = "req-deep"
                 self.repository = None
 
         conductor = ResearchConductor(ResearcherStub())
@@ -684,6 +687,7 @@ class TestResearchConductor:
             if record.getMessage() == "deep_research_decision"
         )
         assert decision_log.task_id == "task-deep"
+        assert decision_log.request_id == "req-deep"
         assert decision_log.should_continue is True
         assert decision_log.evidence_gaps == ["缺少制造业样本"]
         assert decision_log.follow_up_queries == [
@@ -695,6 +699,7 @@ class TestResearchConductor:
             if record.getMessage() == "step_start" and record.step == 101
         )
         assert child_start_log.parent_query == "AI 产业采用率有哪些最新数据？"
+        assert child_start_log.request_id == "req-deep"
 
 
 class TestQueryPlanner:

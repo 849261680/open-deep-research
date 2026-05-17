@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import suppress
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 
+from .logging import current_request_id
 from ..models.research_task import ResearchTask
 from ..models.research_task import ResearchTaskStatus
 from ..research.agent import ResearchAgent
@@ -16,6 +18,8 @@ from ..research.models import ResearchPlanItem
 from ..research.query_planner import QueryPlanner
 from ..research.retriever import ResearchRetriever
 from ..services.research_repository import ResearchRepository
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchOrchestrator:
@@ -33,8 +37,10 @@ class ResearchOrchestrator:
         guest_id: str | None = None,
         config: ResearchConfig | None = None,
         plan_items: list[ResearchPlanItem] | None = None,
+        request_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Create and stream a new research task."""
+        request_id = request_id or current_request_id()
         task = ResearchTask(
             id=str(uuid4()),
             user_id=user_id,
@@ -44,12 +50,24 @@ class ResearchOrchestrator:
         task.status = ResearchTaskStatus.PLANNING
         task.touch()
         self.repository.save_task(task)
+        logger.info(
+            "task_created",
+            extra={
+                "request_id": request_id,
+                "task_id": task.id,
+                "user_id": task.user_id,
+                "guest_id": task.guest_id,
+                "query": task.query,
+                "status": task.status.value,
+            },
+        )
         yield self._event(
             "task_created",
             "研究任务已创建",
             {
                 "id": task.id,
                 "task_id": task.id,
+                "request_id": request_id,
                 "user_id": task.user_id,
                 "guest_id": task.guest_id,
                 "query": task.query,
@@ -57,7 +75,12 @@ class ResearchOrchestrator:
                 "timestamp": task.updated_at,
             },
         )
-        async for update in self.run_task(task, config=config, plan_items=plan_items):
+        async for update in self.run_task(
+            task,
+            config=config,
+            plan_items=plan_items,
+            request_id=request_id,
+        ):
             yield update
 
     async def run_task(
@@ -65,13 +88,16 @@ class ResearchOrchestrator:
         task: ResearchTask,
         config: ResearchConfig | None = None,
         plan_items: list[ResearchPlanItem] | None = None,
+        request_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Run an existing task and persist stream progress."""
+        request_id = request_id or current_request_id()
         research_agent = ResearchAgent(
             query=task.query,
             repository=self.repository,
             config=config,
             plan_items=plan_items,
+            request_id=request_id,
         )
         update_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
 
@@ -121,7 +147,15 @@ class ResearchOrchestrator:
             task.error = str(exc)
             task.touch()
             self.repository.save_task(task)
-            yield self._event("error", f"报告生成失败: {exc}", None)
+            logger.exception(
+                "research_task_failed",
+                extra={"request_id": request_id, "task_id": task.id},
+            )
+            yield self._event(
+                "error",
+                f"报告生成失败: {exc}",
+                {"request_id": request_id, "task_id": task.id},
+            )
         finally:
             if self._active_tasks.get(task.id) is runner:
                 self._active_tasks.pop(task.id, None)
@@ -176,22 +210,30 @@ class ResearchOrchestrator:
         task_id: str,
         user_id: int | None = None,
         guest_id: str | None = None,
+        request_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         """Restart an unfinished task from its saved query."""
+        request_id = request_id or current_request_id()
         task = self.repository.load_task(task_id, user_id=user_id, guest_id=guest_id)
         if task is None:
-            yield self._event("error", f"任务不存在: {task_id}", None)
-            return
-        if task.status == ResearchTaskStatus.COMPLETED:
             yield self._event(
-                "report_complete",
-                "研究已完成",
-                task.model_dump(),
+                "error",
+                f"任务不存在: {task_id}",
+                {"request_id": request_id, "task_id": task_id},
             )
             return
+        if task.status == ResearchTaskStatus.COMPLETED:
+            payload = task.model_dump()
+            payload["request_id"] = request_id
+            yield self._event("report_complete", "研究已完成", payload)
+            return
 
-        yield self._event("resume", "正在从持久化检查点继续研究任务...", {"task_id": task.id})
-        async for update in self.run_task(task):
+        yield self._event(
+            "resume",
+            "正在从持久化检查点继续研究任务...",
+            {"request_id": request_id, "task_id": task.id},
+        )
+        async for update in self.run_task(task, request_id=request_id):
             yield update
 
     def clear(

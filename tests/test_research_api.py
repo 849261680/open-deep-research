@@ -296,7 +296,7 @@ def test_research_request_passes_confirmed_plan_items(
 
 
 def test_stream_research_emits_error_event_on_failure(
-    monkeypatch, client: TestClient
+    monkeypatch, client: TestClient, caplog
 ) -> None:
     async def failing_conduct_research(
         query: str,
@@ -310,12 +310,13 @@ def test_stream_research_emits_error_event_on_failure(
         "backend.app.api.research.research_orchestrator.run",
         failing_conduct_research,
     )
+    caplog.set_level("ERROR", logger="backend.app.api.research")
 
     with client.stream(
         "POST",
         "/api/research",
         json={"query": "test query", "stream": True},
-        headers=AUTH_HEADERS,
+        headers={**AUTH_HEADERS, "X-Request-ID": "req-stream-error"},
     ) as response:
         body = "".join(
             chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
@@ -326,6 +327,10 @@ def test_stream_research_emits_error_event_on_failure(
     assert '"type": "error"' in body
     assert "研究过程中发生错误，请稍后重试" in body
     assert "boom" not in body
+    error_log = next(
+        record for record in caplog.records if record.getMessage().startswith("研究任务执行失败")
+    )
+    assert error_log.request_id == "req-stream-error"
 
 
 def test_stream_research_can_include_error_detail_when_enabled(
@@ -872,7 +877,9 @@ def test_resume_reuses_completed_checkpoint_sections_after_restart(
     assert evidence_count == 1
 
 
-def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -> None:
+def test_orchestrator_run_emits_task_id_before_research(
+    monkeypatch, tmp_path, caplog
+) -> None:
     orchestrator = ResearchOrchestrator()
     orchestrator.repository.db_path = str(tmp_path / "research.db")
     orchestrator.repository._ensure_db()
@@ -892,11 +899,16 @@ def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -
         }
 
     monkeypatch.setattr("backend.app.core.orchestrator.ResearchAgent.run", fake_agent_run)
+    caplog.set_level("INFO", logger="backend.app.core.orchestrator")
 
     events = []
 
     async def collect() -> None:
-        async for event in orchestrator.run("new query", user_id=1):
+        async for event in orchestrator.run(
+            "new query",
+            user_id=1,
+            request_id="req-task",
+        ):
             events.append(event)
 
     import asyncio
@@ -906,7 +918,13 @@ def test_orchestrator_run_emits_task_id_before_research(monkeypatch, tmp_path) -
     assert events[0]["type"] == "task_created"
     assert events[0]["message"] == "研究任务已创建"
     assert events[0]["data"]["task_id"] == events[1]["data"]["id"]
+    assert events[0]["data"]["request_id"] == "req-task"
     assert events[0]["data"]["query"] == "new query"
+    task_log = next(
+        record for record in caplog.records if record.getMessage() == "task_created"
+    )
+    assert task_log.request_id == "req-task"
+    assert task_log.task_id == events[0]["data"]["task_id"]
     saved = orchestrator.repository.load_task(events[0]["data"]["task_id"], user_id=1)
     assert saved
     assert [event["type"] for event in saved.stream_events] == ["report_complete"]
@@ -936,7 +954,11 @@ def test_orchestrator_stop_task_marks_task_failed(tmp_path) -> None:
 
 
 def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> None:
-    agent = ResearchAgent(query="DeepSeek enterprise", max_concurrency=1)
+    agent = ResearchAgent(
+        query="DeepSeek enterprise",
+        max_concurrency=1,
+        request_id="req-gptr",
+    )
     task = ResearchTask(id="task-gptr", query="DeepSeek enterprise")
     caplog.set_level("INFO", logger="backend.app.research.agent")
     context = SubQueryContext(
@@ -1039,6 +1061,7 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> Non
         event for event in events if event["type"] == "report_complete"
     )
     assert report_complete["data"]["architecture"] == "gpt_researcher"
+    assert report_complete["data"]["request_id"] == "req-gptr"
     assert report_complete["data"]["workflow_engine"] == "langgraph"
     assert report_complete["data"]["report"] == "# report"
     assert report_complete["data"]["cost_summary"]["total_tokens"] > 0
@@ -1070,6 +1093,7 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> Non
         record for record in caplog.records if record.getMessage() == "report_complete"
     )
     assert report_log.task_id == "task-gptr"
+    assert report_log.request_id == "req-gptr"
     assert report_log.research_event_type == "report_complete"
     assert report_log.section_count == 1
     assert report_log.deep_section_count == 1
