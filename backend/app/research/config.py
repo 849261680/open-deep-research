@@ -24,7 +24,6 @@ class ResearchConfig(BaseModel):
     source: str = "web"
     query_domains: list[str] = Field(default_factory=list)
     source_urls: list[str] = Field(default_factory=list)
-    enabled_tools: list[str] = Field(default_factory=lambda: ["python_code_execution"])
 
     @classmethod
     def from_env(cls) -> "ResearchConfig":
@@ -45,19 +44,7 @@ class ResearchConfig(BaseModel):
         _set_str_from_env(data, "source", "RESEARCH_SOURCE")
         _set_list_from_env(data, "query_domains", "RESEARCH_QUERY_DOMAINS")
         _set_list_from_env(data, "source_urls", "RESEARCH_SOURCE_URLS")
-        _set_list_from_env(data, "enabled_tools", "RESEARCH_ENABLED_TOOLS")
         return cls(**data)
-
-    def tool_schemas(self) -> list[dict[str, Any]]:
-        """Return schemas for tools enabled in this research task."""
-        from .tools import CodeExecutionTool
-
-        schemas_by_name = {CodeExecutionTool.name: CodeExecutionTool.schema()}
-        return [
-            schemas_by_name[name]
-            for name in self.enabled_tools
-            if name in schemas_by_name
-        ]
 
     @field_validator("retriever")
     @classmethod
@@ -90,22 +77,6 @@ class ResearchConfig(BaseModel):
                 continue
             seen.add(cleaned)
             normalized.append(cleaned)
-        return normalized
-
-    @field_validator("enabled_tools")
-    @classmethod
-    def validate_enabled_tools(cls, value: list[str]) -> list[str]:
-        """Normalize and validate research tool names."""
-        normalized: list[str] = []
-        allowed = {"python_code_execution"}
-        for item in value:
-            tool_name = item.strip()
-            if not tool_name:
-                continue
-            if tool_name not in allowed:
-                raise ValueError("研究工具不支持")
-            if tool_name not in normalized:
-                normalized.append(tool_name)
         return normalized
 
 
