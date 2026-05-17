@@ -1,0 +1,242 @@
+{
+  "task_count": 10,
+  "evaluated_count": 10,
+  "metrics": {
+    "coverage_score": 0.54,
+    "citation_support_rate": 0.3563,
+    "unsupported_claim_count": 48.7,
+    "effective_citations": 10.5,
+    "elapsed_seconds": 93.749,
+    "search_count": 7.0,
+    "read_count": 11.9
+  },
+  "tasks": [
+    {
+      "task_id": "quantum-computing-applications-2026",
+      "query": "量子计算的最新发展和应用场景",
+      "status": "evaluated",
+      "coverage_score": 0.8,
+      "expected_fact_hits": [
+        "容错量子计算",
+        "量子纠错",
+        "NISQ",
+        "优化问题"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.3714,
+      "unsupported_claim_count": 44,
+      "effective_citations": 11,
+      "elapsed_seconds": 80.28,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "ai-regulation-us-eu-china",
+      "query": "美国、欧盟和中国人工智能监管政策对比",
+      "status": "evaluated",
+      "coverage_score": 0.6,
+      "expected_fact_hits": [
+        "风险分级",
+        "生成式人工智能服务管理暂行办法",
+        "合规义务"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.2692,
+      "unsupported_claim_count": 57,
+      "effective_citations": 10,
+      "elapsed_seconds": 93.28,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "ev-battery-recycling-economics",
+      "query": "电动汽车动力电池回收的商业模式和经济性",
+      "status": "evaluated",
+      "coverage_score": 1.0,
+      "expected_fact_hits": [
+        "锂",
+        "镍",
+        "钴",
+        "梯次利用",
+        "回收成本"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.4375,
+      "unsupported_claim_count": 45,
+      "effective_citations": 8,
+      "elapsed_seconds": 91.39,
+      "search_count": 7,
+      "read_count": 11,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "open-source-llm-enterprise-adoption",
+      "query": "开源大语言模型在企业中的落地场景和风险",
+      "status": "evaluated",
+      "coverage_score": 0.6,
+      "expected_fact_hits": [
+        "私有化部署",
+        "数据安全",
+        "许可证"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.4658,
+      "unsupported_claim_count": 39,
+      "effective_citations": 12,
+      "elapsed_seconds": 84.91,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "global-semiconductor-supply-chain-risk",
+      "query": "全球半导体供应链的关键风险和缓解策略",
+      "status": "evaluated",
+      "coverage_score": 0.2,
+      "expected_fact_hits": [
+        "出口管制"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.375,
+      "unsupported_claim_count": 50,
+      "effective_citations": 10,
+      "elapsed_seconds": 110.16,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "carbon-removal-market-quality",
+      "query": "碳移除市场的质量标准、MRV 和商业化挑战",
+      "status": "evaluated",
+      "coverage_score": 0.6,
+      "expected_fact_hits": [
+        "MRV",
+        "永久性",
+        "碳信用"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.1867,
+      "unsupported_claim_count": 61,
+      "effective_citations": 12,
+      "elapsed_seconds": 98.66,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "ai-agents-software-engineering",
+      "query": "AI 编程智能体在软件工程中的能力边界和评价指标",
+      "status": "evaluated",
+      "coverage_score": 0.4,
+      "expected_fact_hits": [
+        "SWE-bench",
+        "工具调用"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.3289,
+      "unsupported_claim_count": 51,
+      "effective_citations": 11,
+      "elapsed_seconds": 88.73,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "healthcare-ai-diagnostics-risk",
+      "query": "医疗 AI 诊断系统的临床价值、风险和监管要求",
+      "status": "evaluated",
+      "coverage_score": 0.4,
+      "expected_fact_hits": [
+        "FDA",
+        "偏差"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.4366,
+      "unsupported_claim_count": 40,
+      "effective_citations": 12,
+      "elapsed_seconds": 90.32,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "robotaxi-commercialization-challenges",
+      "query": "Robotaxi 商业化的技术、监管和单位经济挑战",
+      "status": "evaluated",
+      "coverage_score": 0.2,
+      "expected_fact_hits": [
+        "单位经济"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.3158,
+      "unsupported_claim_count": 52,
+      "effective_citations": 10,
+      "elapsed_seconds": 110.39,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    },
+    {
+      "task_id": "space-launch-market-competition",
+      "query": "商业航天发射市场竞争格局和成本下降趋势",
+      "status": "evaluated",
+      "coverage_score": 0.6,
+      "expected_fact_hits": [
+        "可重复使用火箭",
+        "SpaceX",
+        "发射成本"
+      ],
+      "forbidden_claim_hits": [],
+      "citation_support_rate": 0.3766,
+      "unsupported_claim_count": 48,
+      "effective_citations": 9,
+      "elapsed_seconds": 89.37,
+      "search_count": 7,
+      "read_count": 12,
+      "budget": {
+        "elapsed_seconds": true,
+        "search_count": true,
+        "read_count": true
+      }
+    }
+  ]
+}

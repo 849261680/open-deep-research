@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
+from typing import cast
 
 DEFAULT_TASKS_PATH = Path(__file__).with_name("tasks.json")
 JsonMap = dict[str, object]
@@ -107,7 +108,7 @@ def write_markdown_report(result: JsonMap, path: Path) -> None:
         "## Tasks",
         "",
     ]
-    for task in result.get("tasks", []):
+    for task in cast(list[object], result.get("tasks", [])):
         if isinstance(task, dict):
             lines.extend(_task_markdown(task))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -144,13 +145,15 @@ def _read_json_list(path: Path) -> list[JsonMap]:
 
 def _task_from_json(item: JsonMap) -> EvalTask:
     """Normalize one task JSON object."""
+    raw_budget = item.get("budget", {})
+    budget = raw_budget if isinstance(raw_budget, dict) else {}
     return EvalTask(
         id=str(item["id"]),
         query=str(item["query"]),
         expected_facts=_text_list(item.get("expected_facts", [])),
         preferred_sources=_text_list(item.get("preferred_sources", [])),
         forbidden_claims=_text_list(item.get("forbidden_claims", [])),
-        budget=item.get("budget", {}) if isinstance(item.get("budget"), dict) else {},
+        budget=budget,
     )
 
 
@@ -276,8 +279,8 @@ def _budget_status(task: EvalTask, metrics: JsonMap) -> dict[str, bool]:
     min_read = int(_number(task.budget.get("min_read_count", 0)))
     return {
         "elapsed_seconds": max_elapsed <= 0 or _number(metrics["elapsed_seconds"]) <= max_elapsed,
-        "search_count": int(metrics["search_count"]) >= min_search,
-        "read_count": int(metrics["read_count"]) >= min_read,
+        "search_count": int(_number(metrics["search_count"])) >= min_search,
+        "read_count": int(_number(metrics["read_count"])) >= min_read,
     }
 
 
