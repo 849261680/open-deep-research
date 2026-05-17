@@ -157,6 +157,7 @@ class ResearchAgent:
                     "query": task.query,
                     "status": task.status.value,
                     "architecture": "gpt_researcher",
+                    "workflow_engine": "langgraph",
                     "cost_summary": task.cost_summary,
                     "quality_summary": task.quality_summary,
                     "claim_checks": task.claim_checks,
