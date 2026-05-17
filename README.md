@@ -90,6 +90,18 @@ uv run basedpyright backend/app tests → 0 errors, 0 warnings
 npm run build (frontend)             → Compiled successfully
 ```
 
+## 📊 Eval Baseline（10 个 Smoke Eval 任务）
+
+| 指标 | 值 |
+|------|---:|
+| 任务数 | 10/10 evaluated |
+| 平均 Coverage Score | 0.54 |
+| 平均 Citation Support Rate | 0.36 |
+| 平均 Unsupported Claims | 48.7 |
+| 平均搜索/阅读/耗时 | 7 searches / 12 reads / 94s |
+
+> 详细报告见 [`output/eval_baseline.md`](output/eval_baseline.md)
+
 ## 🚀 快速开始
 
 ### 环境要求
