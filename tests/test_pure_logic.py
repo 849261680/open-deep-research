@@ -212,6 +212,7 @@ class TestResearchConductor:
         assert "DeepSeek Case Study" in sub_query_context.compressed_evidence
         assert sub_query_context.verification["passed"] is True
         event_types = [event["type"] for event in events]
+        assert "workflow_start" in event_types
         assert "search_result" in event_types
         assert "step_start" in event_types
         assert "analysis_progress" in event_types
@@ -273,6 +274,7 @@ class TestResearchConductor:
         caplog.set_level("INFO", logger="backend.app.research.conductor")
         contexts = asyncio.run(conductor.conduct_research(on_event=collect_event))
         plan_event = next(event for event in events if event["type"] == "plan")
+        workflow_event = next(event for event in events if event["type"] == "workflow_start")
         step_start = next(event for event in events if event["type"] == "step_start")
         plan_log = next(
             record
@@ -281,6 +283,12 @@ class TestResearchConductor:
         )
 
         assert contexts[0].query == plan_item.title
+        assert workflow_event["data"]["workflow_engine"] == "langgraph"
+        assert workflow_event["data"]["nodes"] == [
+            "plan_queries",
+            "research_queries",
+            "curate_sources",
+        ]
         assert plan_event["data"]["plan_items"][0]["dimension"] == "数据趋势"
         assert plan_event["data"]["plan_items"][0]["evidence_targets"] == [
             "统计数据",

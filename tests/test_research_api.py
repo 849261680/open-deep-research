@@ -1039,6 +1039,7 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> Non
         event for event in events if event["type"] == "report_complete"
     )
     assert report_complete["data"]["architecture"] == "gpt_researcher"
+    assert report_complete["data"]["workflow_engine"] == "langgraph"
     assert report_complete["data"]["report"] == "# report"
     assert report_complete["data"]["cost_summary"]["total_tokens"] > 0
     assert report_complete["data"]["results"][0]["title"] == context.query

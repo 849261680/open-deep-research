@@ -4,7 +4,12 @@ import asyncio
 import logging
 from collections.abc import Awaitable
 from collections.abc import Callable
+from typing import TypedDict
 from urllib.parse import urlparse
+
+from langgraph.graph import END
+from langgraph.graph import START
+from langgraph.graph import StateGraph
 
 from ..services.compression_service import compression_service
 from ..services.verifier_service import verifier_service
@@ -27,6 +32,16 @@ LOGGED_RESEARCH_EVENTS = {
 }
 
 
+class ResearchGraphState(TypedDict, total=False):
+    """Mutable LangGraph state for the top-level research workflow."""
+
+    plan_items: list[ResearchPlanItem]
+    runnable_plan_items: list[ResearchPlanItem]
+    completed_queries: list[str]
+    sub_queries: list[str]
+    contexts: list[SubQueryContext]
+
+
 class ResearchConductor:
     """Coordinates initial search, sub-query planning, scraping, and context gathering."""
 
@@ -41,6 +56,61 @@ class ResearchConductor:
     async def conduct_research(
         self, on_event: ResearchEventCallback | None = None
     ) -> list[SubQueryContext]:
+        graph = self._build_research_graph(on_event)
+        state = await graph.ainvoke({})
+        return state.get("contexts", [])
+
+    def _build_research_graph(self, on_event: ResearchEventCallback | None):
+        """Build the LangGraph workflow that orchestrates one research run."""
+        graph = StateGraph(ResearchGraphState)
+        graph.add_node("plan_queries", self._graph_plan_queries(on_event))
+        graph.add_node("research_queries", self._graph_research_queries(on_event))
+        graph.add_node("curate_sources", self._graph_curate_sources())
+        graph.add_edge(START, "plan_queries")
+        graph.add_edge("plan_queries", "research_queries")
+        graph.add_edge("research_queries", "curate_sources")
+        graph.add_edge("curate_sources", END)
+        return graph.compile()
+
+    def _graph_plan_queries(self, on_event: ResearchEventCallback | None):
+        """Return a LangGraph node that plans root research queries."""
+        async def node(state: ResearchGraphState) -> ResearchGraphState:  # noqa: ARG001
+            await self._emit(
+                on_event,
+                "workflow_start",
+                "LangGraph 研究工作流已启动",
+                {
+                    "workflow_engine": "langgraph",
+                    "nodes": ["plan_queries", "research_queries", "curate_sources"],
+                },
+            )
+            return await self._plan_query_state(on_event)
+
+        return node
+
+    def _graph_research_queries(self, on_event: ResearchEventCallback | None):
+        """Return a LangGraph node that runs planned queries."""
+        async def node(state: ResearchGraphState) -> ResearchGraphState:
+            return {"contexts": await self._run_query_state(state, on_event)}
+
+        return node
+
+    def _graph_curate_sources(self):
+        """Return a LangGraph node that stores final contexts and curated sources."""
+        async def node(state: ResearchGraphState) -> ResearchGraphState:
+            contexts = sorted(state.get("contexts", []), key=lambda item: item.step)
+            self.researcher.context = contexts
+            all_sources = [source for item in contexts for source in item.sources]
+            self.researcher.research_sources = self.source_curator.curate(all_sources)
+            return {"contexts": contexts}
+
+        return node
+
+    async def _plan_query_state(
+        self,
+        on_event: ResearchEventCallback | None,
+    ) -> ResearchGraphState:
+        """Plan the runnable root queries for the LangGraph state."""
         await self._emit(
             on_event,
             "planning",
@@ -74,13 +144,28 @@ class ResearchConductor:
                 "cost_summary": self.researcher.cost_tracker.summary(),
             },
         )
+        return {
+            "plan_items": plan_items,
+            "runnable_plan_items": runnable_plan_items,
+            "completed_queries": sorted(completed_queries),
+            "sub_queries": sub_queries,
+        }
 
+    async def _run_query_state(
+        self,
+        state: ResearchGraphState,
+        on_event: ResearchEventCallback | None,
+    ) -> list[SubQueryContext]:
+        """Run planned query branches from the LangGraph state."""
+        sub_queries = state.get("sub_queries", [])
         if not sub_queries:
             self.researcher.context = list(
                 getattr(self.researcher, "checkpoint_contexts", [])
             )
             return []
 
+        plan_items = state.get("plan_items", [])
+        runnable_plan_items = state.get("runnable_plan_items", [])
         semaphore = asyncio.Semaphore(self.researcher.max_concurrency)
 
         async def run_sub_query(index: int, sub_query: str) -> list[SubQueryContext]:
@@ -105,10 +190,6 @@ class ResearchConductor:
             for context in branch_contexts:
                 await self._emit_step_complete(on_event, context)
 
-        contexts = sorted(contexts, key=lambda item: item.step)
-        self.researcher.context = contexts
-        all_sources = [source for item in contexts for source in item.sources]
-        self.researcher.research_sources = self.source_curator.curate(all_sources)
         return contexts
 
     def _completed_checkpoint_queries(self) -> set[str]:

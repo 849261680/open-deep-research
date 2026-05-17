@@ -23,6 +23,7 @@ Deep Research Agent 是一个基于 AI 的智能研究助手，能够自动制�
 ## 📋 核心能力
 
 - **智能计划制定** - 基于 DeepSeek AI 自动生成结构化研究计划
+- **LangGraph 工作流** - 使用 StateGraph 编排计划、研究执行和来源整理节点
 - **多源数据搜索** - 集成 Tavily Search 等多个搜索引擎
 - **实时进度追踪** - 动态显示搜索过程和结果详情
 - **专业报告生成** - 自动分析并生成结构化研究报告
@@ -36,6 +37,7 @@ Deep Research Agent 是一个基于 AI 的智能研究助手，能够自动制�
 - **uv** - 现代 Python 包管理工具
 - **FastAPI** - 高性能 Web 框架
 - **LangChain** - AI 应用开发框架
+- **LangGraph** - Agent 工作流图编排
 - **DeepSeek API** - 大语言模型服务
 - **Tavily Search** - 搜索引擎集成
 
@@ -119,6 +121,24 @@ HTTP 请求会写入 `backend.http` 日志，包含 `method`、`path`、`status`
 ```bash
 LOG_LEVEL=DEBUG ./backend.sh
 ```
+
+## 🧠 Agent 工作流
+
+当前研究流程由 `backend/app/research/conductor.py` 中的 LangGraph `StateGraph` 编排：
+
+```text
+START
+  → plan_queries
+  → research_queries
+  → curate_sources
+  → END
+```
+
+- `plan_queries`：生成或加载用户确认后的结构化研究计划，并发出 `workflow_start` / `plan` 流式事件。
+- `research_queries`：按计划并发执行子查询，保留递归 deep research、证据压缩和章节校验逻辑。
+- `curate_sources`：汇总章节上下文和来源，生成最终可写作的 curated source list。
+
+API 仍保持兼容，最终 payload 会同时标记 `architecture: "gpt_researcher"` 和 `workflow_engine: "langgraph"`。
 
 ## 🔧 开发工具
 
