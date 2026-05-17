@@ -271,10 +271,10 @@ GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8003/api/auth/google/callback
    DEEPSEEK_API_KEY=your_key
    DEEPSEEK_MODEL=deepseek-chat
    DEEPSEEK_TEMPERATURE=0.7
-DEEPSEEK_MAX_OUTPUT_TOKENS=4000
-DEEPSEEK_MAX_PROMPT_CHARS=24000
-RESEARCH_MAX_READ_PAGES_PER_SECTION=8
-TAVILY_API_KEY=your_key
+   DEEPSEEK_MAX_OUTPUT_TOKENS=4000
+   DEEPSEEK_MAX_PROMPT_CHARS=24000
+   RESEARCH_MAX_READ_PAGES_PER_SECTION=8
+   TAVILY_API_KEY=your_key
    GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
    GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
    GOOGLE_OAUTH_REDIRECT_URI=https://your-railway-domain.railway.app/api/auth/google/callback
@@ -371,14 +371,3 @@ uv sync --index-url https://pypi.tuna.tsinghua.edu.cn/simple/
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 🙏 致谢
-
-- [uv](https://github.com/astral-sh/uv) - 现代 Python 包管理工具
-- [LangChain](https://github.com/langchain-ai/langchain) - AI 应用开发框架
-- [DeepSeek](https://www.deepseek.com/) - 大语言模型服务
-- [Tavily](https://tavily.com/) - 搜索 API 服务
-
----
-
-**🎉 享受使用 uv 带来的极速开发体验！**
