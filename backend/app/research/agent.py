@@ -21,6 +21,8 @@ from .models import DeepResearchDecision
 from .models import ResearchPlanItem
 from .models import ResearchSource
 from .models import SubQueryContext
+from .tools import CodeExecutionTool
+from .tools import CodeExecutionResult
 from .writer import ResearchWriter
 
 logger = logging.getLogger(__name__)
@@ -60,8 +62,29 @@ class ResearchAgent:
         self.task_id: str | None = None
         self.evidence_store = EvidenceStore()
         self.cost_tracker = CostTracker()
+        self.tools = self._build_tools(resolved_config)
         self.conductor = ResearchConductor(self)
         self.writer = ResearchWriter(self.cost_tracker, config=resolved_config)
+
+    def _build_tools(self, config: ResearchConfig) -> dict[str, CodeExecutionTool]:
+        """Instantiate tools enabled for this research agent."""
+        tools: dict[str, CodeExecutionTool] = {}
+        if CodeExecutionTool.name in config.enabled_tools:
+            tools[CodeExecutionTool.name] = CodeExecutionTool()
+        return tools
+
+    def execute_tool(self, name: str, arguments: dict[str, object]) -> CodeExecutionResult:
+        """Execute a registered research tool by name."""
+        tool = self.tools.get(name)
+        if tool is None:
+            raise ValueError(f"Unknown research tool: {name}")
+        code = arguments.get("code")
+        if not isinstance(code, str):
+            raise ValueError("Tool argument 'code' must be a string")
+        timeout = arguments.get("timeout_seconds")
+        if timeout is not None and not isinstance(timeout, int):
+            raise ValueError("Tool argument 'timeout_seconds' must be an integer")
+        return tool.run(code, timeout_seconds=timeout)
 
     def _config_from_defaults(
         self,
