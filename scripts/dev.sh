@@ -6,8 +6,31 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
+STARTED_AT="$(date +%s)"
 
 echo "🚀 启动 Research Agent 开发环境..."
+
+log_elapsed() {
+    local label="$1"
+    local now
+    now="$(date +%s)"
+    echo "⏱️  ${label}: $((now - STARTED_AT))s"
+}
+
+install_frontend_deps_if_needed() {
+    cd "$ROOT_DIR/frontend"
+    if [ ! -d "node_modules" ] || \
+       [ ! -f "node_modules/.package-lock.json" ] || \
+       [ "package-lock.json" -nt "node_modules/.package-lock.json" ]; then
+        echo "📦 前端依赖缺失或 package-lock.json 已更新，正在安装..."
+        npm install --prefer-offline --no-audit --no-fund
+        log_elapsed "前端依赖检查完成"
+        return
+    fi
+
+    echo "✅ 前端依赖已就绪，跳过 npm install"
+    log_elapsed "前端依赖检查完成"
+}
 
 # 检查 uv 是否安装
 if ! command -v uv &> /dev/null; then
@@ -36,6 +59,7 @@ fi
 # 启动后端
 echo "🔧 启动后端服务..."
 uv sync --group dev
+log_elapsed "Python 依赖同步完成"
 
 # 后台启动后端
 uv run python -m uvicorn backend.app.main:app \
@@ -48,15 +72,16 @@ echo "✅ 后端服务已启动 (PID: $BACKEND_PID)"
 
 # 等待后端启动
 sleep 3
+log_elapsed "后端启动等待完成"
 
 # 启动前端
 echo "🎨 启动前端服务..."
-cd "$ROOT_DIR/frontend"
-npm install
+install_frontend_deps_if_needed
 
 # 启动前端
 HOST=0.0.0.0 \
 PORT=3003 \
+BROWSER="${BROWSER:-none}" \
 FAST_REFRESH="${FAST_REFRESH:-true}" \
 WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}" \
 CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-false}" \
