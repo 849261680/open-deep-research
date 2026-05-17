@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import TypedDict
+from typing import cast
 from urllib.parse import urlparse
 
 from langgraph.graph import END
@@ -40,6 +41,25 @@ class ResearchGraphState(TypedDict, total=False):
     runnable_plan_items: list[ResearchPlanItem]
     completed_queries: list[str]
     sub_queries: list[str]
+    contexts: list[SubQueryContext]
+
+
+class QueryBranchItem(TypedDict):
+    """One queued query branch item inside the deep-research subgraph."""
+
+    step: int
+    query: str
+    depth: int
+    parent_query: str
+    plan_item: ResearchPlanItem | None
+
+
+class QueryBranchGraphState(TypedDict, total=False):
+    """Mutable LangGraph state for one root query and its follow-ups."""
+
+    pending: list[QueryBranchItem]
+    current: QueryBranchItem
+    current_context: SubQueryContext
     contexts: list[SubQueryContext]
 
 
@@ -101,6 +121,24 @@ def _trace_state_outputs(output: object) -> dict[str, object]:
             "context_count": len(output.get("contexts", [])),
         }
     return {"output_type": type(output).__name__}
+
+
+def _trace_branch_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    """Summarize deep-research subgraph state for LangSmith."""
+    state = inputs.get("state")
+    if not isinstance(state, dict):
+        return _trace_research_inputs(inputs)
+    current = state.get("current", {})
+    if not isinstance(current, dict):
+        current = {}
+    pending = state.get("pending", [])
+    return {
+        **_trace_research_inputs(inputs),
+        "step": current.get("step"),
+        "query": current.get("query"),
+        "depth": current.get("depth"),
+        "pending_count": len(pending) if isinstance(pending, list) else 0,
+    }
 
 
 class ResearchConductor:
@@ -369,47 +407,204 @@ class ResearchConductor:
         parent_query: str = "",
         inherited_plan_item: ResearchPlanItem | None = None,
     ) -> list[SubQueryContext]:
-        """Traceable query branch runner, including recursive follow-ups."""
-        plan_item = inherited_plan_item or self._plan_item_for_query(plan_items, query)
+        """Traceable query branch runner, including follow-up loops."""
+        graph = self._build_query_branch_graph(
+            plan_items=plan_items,
+            total=total,
+            on_event=on_event,
+        )
+        initial_plan_item = inherited_plan_item or self._plan_item_for_query(
+            plan_items,
+            query,
+        )
+        state = await graph.ainvoke(
+            {
+                "pending": [
+                    {
+                        "step": step,
+                        "query": query,
+                        "depth": depth,
+                        "parent_query": parent_query,
+                        "plan_item": initial_plan_item,
+                    }
+                ],
+                "contexts": [],
+            }
+        )
+        return state.get("contexts", [])
+
+    def _build_query_branch_graph(
+        self,
+        *,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event: ResearchEventCallback | None,
+    ):
+        """Build a LangGraph subgraph for one query branch and its follow-ups."""
+        graph = StateGraph(QueryBranchGraphState)
+        graph.add_node("load_next_query", self._branch_load_next_query())
+        graph.add_node(
+            "process_current_query",
+            self._branch_process_current_query(plan_items, total, on_event),
+        )
+        graph.add_node(
+            "decide_next_queries",
+            self._branch_decide_next_queries(plan_items, total, on_event),
+        )
+        graph.add_edge(START, "load_next_query")
+        graph.add_edge("load_next_query", "process_current_query")
+        graph.add_edge("process_current_query", "decide_next_queries")
+        graph.add_conditional_edges(
+            "decide_next_queries",
+            self._branch_route_after_decision,
+            {
+                "continue": "load_next_query",
+                "done": END,
+            },
+        )
+        return graph.compile()
+
+    def _branch_load_next_query(self):
+        """Return a node that loads the next queued query branch item."""
+        async def node(state: QueryBranchGraphState) -> QueryBranchGraphState:
+            pending = state.get("pending", [])
+            if not pending:
+                return state
+            return {
+                "current": pending[0],
+                "pending": pending[1:],
+            }
+
+        return node
+
+    def _branch_process_current_query(
+        self,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event: ResearchEventCallback | None,
+    ):
+        """Return a node that researches the currently loaded query."""
+        async def node(state: QueryBranchGraphState) -> QueryBranchGraphState:
+            return await self._traced_branch_process_current_query(
+                state=state,
+                plan_items=plan_items,
+                total=total,
+                on_event=on_event,
+            )
+
+        return node
+
+    @traceable(
+        name="branch_process_current_query",
+        run_type="chain",
+        tags=["langgraph-subgraph", "deep-research"],
+        process_inputs=_trace_branch_inputs,
+        process_outputs=_trace_state_outputs,
+    )
+    async def _traced_branch_process_current_query(
+        self,
+        *,
+        state: QueryBranchGraphState,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event: ResearchEventCallback | None,
+    ) -> QueryBranchGraphState:
+        """Process one query item in the deep-research subgraph."""
+        current = state.get("current")
+        if current is None:
+            return {"contexts": state.get("contexts", [])}
+        plan_item = current["plan_item"] or self._plan_item_for_query(
+            plan_items,
+            current["query"],
+        )
         await self._emit_step_start(
             on_event,
-            step,
-            query,
+            current["step"],
+            current["query"],
             plan_items,
             total,
-            depth,
-            parent_query,
+            current["depth"],
+            current["parent_query"],
         )
         context = await self._process_sub_query(
-            step,
-            query,
+            current["step"],
+            current["query"],
             on_event,
-            depth=depth,
-            parent_query=parent_query,
+            depth=current["depth"],
+            parent_query=current["parent_query"],
             plan_item=plan_item,
         )
-        decision = await self._decide_deeper_research(context, plan_item, depth)
+        return {"current_context": context}
+
+    def _branch_decide_next_queries(
+        self,
+        plan_items: list[ResearchPlanItem],
+        total: int,  # noqa: ARG002
+        on_event: ResearchEventCallback | None,
+    ):
+        """Return a node that decides and queues follow-up queries."""
+        async def node(state: QueryBranchGraphState) -> QueryBranchGraphState:
+            return await self._traced_branch_decide_next_queries(
+                state=state,
+                plan_items=plan_items,
+                on_event=on_event,
+            )
+
+        return node
+
+    @traceable(
+        name="branch_decide_next_queries",
+        run_type="chain",
+        tags=["langgraph-subgraph", "deep-research-decision"],
+        process_inputs=_trace_branch_inputs,
+        process_outputs=_trace_state_outputs,
+    )
+    async def _traced_branch_decide_next_queries(
+        self,
+        *,
+        state: QueryBranchGraphState,
+        plan_items: list[ResearchPlanItem],
+        on_event: ResearchEventCallback | None,
+    ) -> QueryBranchGraphState:
+        """Decide whether the current query needs follow-up branches."""
+        current = state.get("current")
+        context = state.get("current_context")
+        if current is None or context is None:
+            return {"contexts": state.get("contexts", [])}
+        plan_item = current["plan_item"] or self._plan_item_for_query(
+            plan_items,
+            current["query"],
+        )
+        decision = await self._decide_deeper_research(
+            context,
+            plan_item,
+            current["depth"],
+        )
         context.deep_research = decision
         await self._emit_deep_research_decision(on_event, context, decision)
+        contexts = [*state.get("contexts", []), context]
+        pending = state.get("pending", [])
         if not decision.should_continue:
-            return [context]
+            return {"contexts": contexts, "pending": pending}
 
-        branch = [context]
-        for child_index, follow_up_query in enumerate(decision.follow_up_queries, start=1):
-            child_step = self._child_step(step, child_index)
-            branch.extend(
-                await self._process_query_tree(
-                    step=child_step,
-                    query=follow_up_query,
-                    plan_items=plan_items,
-                    total=total,
-                    on_event=on_event,
-                    depth=depth + 1,
-                    parent_query=query,
-                    inherited_plan_item=plan_item,
-                )
+        follow_up_items: list[QueryBranchItem] = [
+            {
+                "step": self._child_step(current["step"], child_index),
+                "query": follow_up_query,
+                "depth": current["depth"] + 1,
+                "parent_query": current["query"],
+                "plan_item": cast(ResearchPlanItem | None, plan_item),
+            }
+            for child_index, follow_up_query in enumerate(
+                decision.follow_up_queries,
+                start=1,
             )
-        return branch
+        ]
+        return {"contexts": contexts, "pending": [*follow_up_items, *pending]}
+
+    def _branch_route_after_decision(self, state: QueryBranchGraphState) -> str:
+        """Route the branch subgraph while queued follow-up queries remain."""
+        return "continue" if state.get("pending") else "done"
 
     def _log_plan_created(self, plan_items: list[ResearchPlanItem]) -> None:
         """Log structured plan metadata for LogQL-based runtime verification."""
