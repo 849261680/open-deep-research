@@ -1,6 +1,9 @@
+from typing import Any
+
 from langchain_core.language_models.llms import BaseLLM
 from langchain_core.outputs import Generation
 from langchain_core.outputs import LLMResult
+from langsmith import traceable
 
 from ..services.deepseek_service import deepseek_service
 
@@ -61,7 +64,7 @@ class DeepSeekLLM(BaseLLM):
         prompt: str,
         stop: list[str] | None = None,
         run_manager: object | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> str:
         """Call DeepSeek API."""
         result = self._generate([prompt], stop, run_manager, **kwargs)
@@ -72,12 +75,27 @@ class DeepSeekLLM(BaseLLM):
         prompt: str,
         stop: list[str] | None = None,
         run_manager: object | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> str:
         """Call DeepSeek API asynchronously.
 
         Accepts an optional ``temperature`` kwarg to override the default.
         """
+        return await self._traced_acall(prompt, stop, run_manager, **kwargs)
+
+    @traceable(
+        name="DeepSeek LLM call",
+        run_type="llm",
+        tags=["deepseek", "research-agent"],
+    )
+    async def _traced_acall(
+        self,
+        prompt: str,
+        stop: list[str] | None = None,
+        run_manager: object | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Traceable async DeepSeek call for LangSmith observability."""
         temperature = kwargs.pop("temperature", None)
         if temperature is not None:
             result = await self._agenerate(

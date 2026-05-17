@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from langgraph.graph import END
 from langgraph.graph import START
 from langgraph.graph import StateGraph
+from langsmith import traceable
 
 from ..services.compression_service import compression_service
 from ..services.verifier_service import verifier_service
@@ -42,6 +43,66 @@ class ResearchGraphState(TypedDict, total=False):
     contexts: list[SubQueryContext]
 
 
+def _trace_research_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    """Keep LangSmith workflow inputs compact and JSON-safe."""
+    conductor = inputs.get("self")
+    researcher = getattr(conductor, "researcher", None)
+    return {
+        "query": getattr(researcher, "query", ""),
+        "task_id": getattr(researcher, "task_id", None),
+        "max_sub_queries": getattr(researcher, "max_sub_queries", None),
+        "max_concurrency": getattr(researcher, "max_concurrency", None),
+    }
+
+
+def _trace_state_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    """Summarize LangGraph state without logging callbacks or full contexts."""
+    state = inputs.get("state")
+    if not isinstance(state, dict):
+        return _trace_research_inputs(inputs)
+    sub_queries = state.get("sub_queries", [])
+    return {
+        **_trace_research_inputs(inputs),
+        "sub_query_count": len(sub_queries) if isinstance(sub_queries, list) else 0,
+        "completed_query_count": len(state.get("completed_queries", [])),
+    }
+
+
+def _trace_query_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    """Summarize one query branch for LangSmith."""
+    return {
+        **_trace_research_inputs(inputs),
+        "step": inputs.get("step"),
+        "query": inputs.get("query") or inputs.get("sub_query"),
+        "depth": inputs.get("depth"),
+        "parent_query": inputs.get("parent_query", ""),
+    }
+
+
+def _trace_context_outputs(output: object) -> dict[str, object]:
+    """Summarize context list outputs for LangSmith."""
+    if isinstance(output, list):
+        return {
+            "context_count": len(output),
+            "queries": [
+                getattr(context, "query", "")
+                for context in output[:10]
+            ],
+        }
+    return {"output_type": type(output).__name__}
+
+
+def _trace_state_outputs(output: object) -> dict[str, object]:
+    """Summarize state outputs for LangSmith."""
+    if isinstance(output, dict):
+        return {
+            "plan_item_count": len(output.get("plan_items", [])),
+            "sub_query_count": len(output.get("sub_queries", [])),
+            "context_count": len(output.get("contexts", [])),
+        }
+    return {"output_type": type(output).__name__}
+
+
 class ResearchConductor:
     """Coordinates initial search, sub-query planning, scraping, and context gathering."""
 
@@ -56,6 +117,20 @@ class ResearchConductor:
     async def conduct_research(
         self, on_event: ResearchEventCallback | None = None
     ) -> list[SubQueryContext]:
+        return await self._run_langgraph_workflow(on_event)
+
+    @traceable(
+        name="Deep Research LangGraph workflow",
+        run_type="chain",
+        tags=["langgraph", "research-agent"],
+        process_inputs=_trace_research_inputs,
+        process_outputs=_trace_context_outputs,
+    )
+    async def _run_langgraph_workflow(
+        self,
+        on_event: ResearchEventCallback | None = None,
+    ) -> list[SubQueryContext]:
+        """Run the LangGraph workflow with a top-level LangSmith trace span."""
         graph = self._build_research_graph(on_event)
         state = await graph.ainvoke({})
         return state.get("contexts", [])
@@ -111,6 +186,20 @@ class ResearchConductor:
         on_event: ResearchEventCallback | None,
     ) -> ResearchGraphState:
         """Plan the runnable root queries for the LangGraph state."""
+        return await self._traced_plan_query_state(on_event)
+
+    @traceable(
+        name="plan_queries",
+        run_type="chain",
+        tags=["langgraph-node", "planning"],
+        process_inputs=_trace_research_inputs,
+        process_outputs=_trace_state_outputs,
+    )
+    async def _traced_plan_query_state(
+        self,
+        on_event: ResearchEventCallback | None,
+    ) -> ResearchGraphState:
+        """Traceable implementation of the LangGraph planning node."""
         await self._emit(
             on_event,
             "planning",
@@ -157,6 +246,21 @@ class ResearchConductor:
         on_event: ResearchEventCallback | None,
     ) -> list[SubQueryContext]:
         """Run planned query branches from the LangGraph state."""
+        return await self._traced_run_query_state(state, on_event)
+
+    @traceable(
+        name="research_queries",
+        run_type="chain",
+        tags=["langgraph-node", "research"],
+        process_inputs=_trace_state_inputs,
+        process_outputs=_trace_context_outputs,
+    )
+    async def _traced_run_query_state(
+        self,
+        state: ResearchGraphState,
+        on_event: ResearchEventCallback | None,
+    ) -> list[SubQueryContext]:
+        """Traceable implementation of the LangGraph research node."""
         sub_queries = state.get("sub_queries", [])
         if not sub_queries:
             self.researcher.context = list(
@@ -235,6 +339,37 @@ class ResearchConductor:
         inherited_plan_item: ResearchPlanItem | None = None,
     ) -> list[SubQueryContext]:
         """Run one query and recursively follow evidence gaps within depth limits."""
+        return await self._traced_process_query_tree(
+            step=step,
+            query=query,
+            plan_items=plan_items,
+            total=total,
+            on_event=on_event,
+            depth=depth,
+            parent_query=parent_query,
+            inherited_plan_item=inherited_plan_item,
+        )
+
+    @traceable(
+        name="process_query_tree",
+        run_type="chain",
+        tags=["deep-research", "recursive"],
+        process_inputs=_trace_query_inputs,
+        process_outputs=_trace_context_outputs,
+    )
+    async def _traced_process_query_tree(
+        self,
+        *,
+        step: int,
+        query: str,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event: ResearchEventCallback | None,
+        depth: int = 1,
+        parent_query: str = "",
+        inherited_plan_item: ResearchPlanItem | None = None,
+    ) -> list[SubQueryContext]:
+        """Traceable query branch runner, including recursive follow-ups."""
         plan_item = inherited_plan_item or self._plan_item_for_query(plan_items, query)
         await self._emit_step_start(
             on_event,
@@ -385,6 +520,40 @@ class ResearchConductor:
         parent_query: str = "",
         plan_item: ResearchPlanItem | None = None,
     ) -> SubQueryContext:
+        return await self._traced_process_sub_query(
+            step,
+            sub_query,
+            on_event,
+            depth=depth,
+            parent_query=parent_query,
+            plan_item=plan_item,
+        )
+
+    @traceable(
+        name="process_sub_query",
+        run_type="chain",
+        tags=["research", "evidence"],
+        process_inputs=_trace_query_inputs,
+        process_outputs=lambda output: {
+            "query": getattr(output, "query", ""),
+            "step": getattr(output, "step", None),
+            "depth": getattr(output, "depth", None),
+            "source_count": len(getattr(output, "sources", [])),
+            "citation_count": len(getattr(output, "citations", [])),
+            "evidence_count": len(getattr(output, "evidence_ids", [])),
+        },
+    )
+    async def _traced_process_sub_query(
+        self,
+        step: int,
+        sub_query: str,
+        on_event: ResearchEventCallback | None = None,
+        *,
+        depth: int = 1,
+        parent_query: str = "",
+        plan_item: ResearchPlanItem | None = None,
+    ) -> SubQueryContext:
+        """Traceable sub-query pipeline from search through verification."""
         planned_queries = self._search_queries_for_query(
             getattr(self.researcher, "plan_items", []),
             sub_query,

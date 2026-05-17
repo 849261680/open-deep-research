@@ -74,6 +74,7 @@ graph TD
 | 层级 | 技术 |
 |------|------|
 | **Agent 编排** | LangGraph StateGraph |
+| **可观测性** | LangSmith trace（可选启用） |
 | **LLM** | DeepSeek API（via LangChain） |
 | **搜索** | Tavily Search API |
 | **后端** | Python 3.10+ / FastAPI / uv |
@@ -162,6 +163,26 @@ HTTP 请求会写入 `backend.http` 日志，包含 `method`、`path`、`status`
 ```bash
 LOG_LEVEL=DEBUG ./backend.sh
 ```
+
+### LangSmith Trace
+
+需要把研究任务发送到 LangSmith dashboard 时，在 `.env` 或 `backend/.env` 中启用：
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your_langsmith_api_key_here
+LANGSMITH_PROJECT=open-deepresearch
+```
+
+项目同时保留旧版 LangChain 环境变量兼容：
+
+```bash
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_api_key_here
+LANGCHAIN_PROJECT=open-deepresearch
+```
+
+未配置 API key 或 tracing 为 `false` 时，研究流程照常运行；配置后可看到 `Deep Research LangGraph workflow`、`plan_queries`、`research_queries`、`process_query_tree`、`process_sub_query` 和 `DeepSeek LLM call` 等 trace span。
 
 ## 🧠 Agent 工作流
 
