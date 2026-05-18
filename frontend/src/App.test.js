@@ -94,7 +94,7 @@ test('restores active stream updates after switching away and back', async () =>
 
   await screen.findByText('研究计划');
   expect(researchAPI.startResearchStream).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: /执行计划/ }));
+  fireEvent.click(screen.getByRole('button', { name: /确认计划并开始研究/ }));
 
   await screen.findByText('当前状态');
   expect(researchAPI.startResearchStream.mock.calls[0][2].planItems[0].title)

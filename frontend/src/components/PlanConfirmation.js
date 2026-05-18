@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Play, Search, Target, Trash2, X } from 'lucide-react';
+import { Edit3, FileText, Play, Search, Target, Trash2, X } from 'lucide-react';
 
 const emptyPlanItem = {
   title: '',
@@ -31,6 +31,8 @@ const displayText = (value, fallback) => {
 
 // 可编辑的研究计划确认面板。
 const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = false }) => {
+  const [editingIndex, setEditingIndex] = React.useState(null);
+
   if (!plan) return null;
 
   const updateItem = (index, updates) => {
@@ -47,6 +49,7 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
       ...plan,
       plan_items: plan.plan_items.filter((_, itemIndex) => itemIndex !== index),
     });
+    setEditingIndex(editingIndex === index ? null : editingIndex);
   };
 
   const addItem = () => {
@@ -54,6 +57,7 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
       ...plan,
       plan_items: [...plan.plan_items, { ...emptyPlanItem }],
     });
+    setEditingIndex(plan.plan_items.length);
   };
 
   const confirmedItems = plan.plan_items.filter((item) => item.title.trim());
@@ -94,15 +98,6 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
             <X className="h-4 w-4" />
             取消
           </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(confirmedItems)}
-            disabled={isLoading || confirmedItems.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-dark disabled:opacity-60"
-          >
-            <Play className="h-4 w-4" />
-            执行计划
-          </button>
         </div>
       </div>
 
@@ -125,14 +120,25 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
                   {displayText(item.dimension, '待补充维度')}
                 </p>
               </div>
-              <button
-                type="button"
-                aria-label="删除计划项"
-                onClick={() => removeItem(index)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-text-secondary"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label={editingIndex === index ? `收起编辑步骤 ${index + 1}` : `编辑步骤 ${index + 1}`}
+                  onClick={() => setEditingIndex(editingIndex === index ? null : index)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border-light px-3 py-1.5 text-sm font-semibold text-text-primary"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  {editingIndex === index ? '收起' : '编辑'}
+                </button>
+                <button
+                  type="button"
+                  aria-label="删除计划项"
+                  onClick={() => removeItem(index)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-light text-text-secondary"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="mb-4 grid gap-2 md:grid-cols-2">
               <PlanSummary
@@ -145,12 +151,14 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
                 label="搜索查询"
                 items={item.search_queries}
                 fallback="待补充搜索查询"
+                variant="chips"
               />
               <PlanSummary
                 icon={Target}
                 label="预期证据"
                 items={item.evidence_targets}
                 fallback="待补充证据目标"
+                variant="chips"
               />
               <PlanSummary
                 icon={FileText}
@@ -158,40 +166,27 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
                 items={[displayText(item.expected_outcome, '待补充预期产出')]}
               />
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <PlanInput
-                label="标题"
-                value={item.title}
-                onChange={(value) => updateItem(index, { title: value })}
+            {editingIndex === index && (
+              <PlanEditor
+                item={item}
+                index={index}
+                onUpdate={updateItem}
               />
-              <PlanInput
-                label="维度"
-                value={item.dimension}
-                onChange={(value) => updateItem(index, { dimension: value })}
-              />
-              <PlanTextArea
-                label="搜索语句"
-                value={joinList(item.search_queries)}
-                onChange={(value) => updateItem(index, { search_queries: splitList(value) })}
-              />
-              <PlanTextArea
-                label="证据目标"
-                value={joinList(item.evidence_targets)}
-                onChange={(value) => updateItem(index, { evidence_targets: splitList(value) })}
-              />
-              <PlanTextArea
-                label="拆分理由"
-                value={item.rationale}
-                onChange={(value) => updateItem(index, { rationale: value })}
-              />
-              <PlanTextArea
-                label="预期产出"
-                value={item.expected_outcome}
-                onChange={(value) => updateItem(index, { expected_outcome: value })}
-              />
-            </div>
+            )}
           </div>
         ))}
+      </div>
+
+      <div className="mt-4 flex justify-end border-t border-border-light pt-4">
+        <button
+          type="button"
+          onClick={() => onConfirm(confirmedItems)}
+          disabled={isLoading || confirmedItems.length === 0}
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-black text-accent-dark disabled:opacity-60"
+        >
+          <Play className="h-4 w-4" />
+          确认计划并开始研究
+        </button>
       </div>
     </section>
   );
@@ -203,8 +198,8 @@ const PlanMetric = ({ label }) => (
   </span>
 );
 
-// 展示单个计划步骤的只读摘要，同时保留下面的可编辑表单。
-const PlanSummary = ({ icon: Icon, label, items, fallback = '' }) => {
+// 展示单个计划步骤的只读摘要。
+const PlanSummary = ({ icon: Icon, label, items, fallback = '', variant = 'text' }) => {
   const visibleItems = Array.isArray(items) ? items.filter(Boolean) : [];
   const content = visibleItems.length > 0 ? visibleItems : [fallback];
   return (
@@ -213,9 +208,14 @@ const PlanSummary = ({ icon: Icon, label, items, fallback = '' }) => {
         <Icon className="h-4 w-4" />
         {label}
       </div>
-      <div className="space-y-1">
+      <div className={variant === 'chips' ? 'flex flex-wrap gap-2' : 'space-y-1'}>
         {content.map((item, itemIndex) => (
-          <p key={`${label}-${itemIndex}-${item}`} className="text-sm font-semibold text-text-primary">
+          <p
+            key={`${label}-${itemIndex}-${item}`}
+            className={variant === 'chips'
+              ? 'rounded-full border border-border-light bg-white px-3 py-1 text-sm font-semibold text-text-primary'
+              : 'text-sm font-semibold text-text-primary'}
+          >
             {item}
           </p>
         ))}
@@ -223,6 +223,42 @@ const PlanSummary = ({ icon: Icon, label, items, fallback = '' }) => {
     </div>
   );
 };
+
+// 当前步骤的编辑表单，只在用户主动展开时显示。
+const PlanEditor = ({ item, index, onUpdate }) => (
+  <div className="grid gap-3 border-t border-border-light pt-4 md:grid-cols-2">
+    <PlanInput
+      label="标题"
+      value={item.title}
+      onChange={(value) => onUpdate(index, { title: value })}
+    />
+    <PlanInput
+      label="维度"
+      value={item.dimension}
+      onChange={(value) => onUpdate(index, { dimension: value })}
+    />
+    <PlanTextArea
+      label="搜索语句"
+      value={joinList(item.search_queries)}
+      onChange={(value) => onUpdate(index, { search_queries: splitList(value) })}
+    />
+    <PlanTextArea
+      label="证据目标"
+      value={joinList(item.evidence_targets)}
+      onChange={(value) => onUpdate(index, { evidence_targets: splitList(value) })}
+    />
+    <PlanTextArea
+      label="拆分理由"
+      value={item.rationale}
+      onChange={(value) => onUpdate(index, { rationale: value })}
+    />
+    <PlanTextArea
+      label="预期产出"
+      value={item.expected_outcome}
+      onChange={(value) => onUpdate(index, { expected_outcome: value })}
+    />
+  </div>
+);
 
 const PlanInput = ({ label, value, onChange }) => (
   <label className="block">

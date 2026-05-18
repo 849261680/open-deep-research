@@ -28,6 +28,7 @@ test('edits, deletes, and confirms plan items', () => {
     />
   );
 
+  fireEvent.click(screen.getByRole('button', { name: '编辑步骤 1' }));
   fireEvent.change(screen.getByLabelText('标题'), {
     target: { value: 'AI 企业采用率' },
   });
@@ -50,7 +51,7 @@ test('edits, deletes, and confirms plan items', () => {
       onCancel={jest.fn()}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: /执行计划/ }));
+  fireEvent.click(screen.getByRole('button', { name: /确认计划并开始研究/ }));
   expect(handleConfirm).toHaveBeenCalledWith([
     expect.objectContaining({ title: 'AI 企业采用率' }),
   ]);
@@ -86,4 +87,21 @@ test('presents the research plan as an agent execution contract', () => {
   expect(screen.getAllByText('统计数据').length).toBeGreaterThan(0);
   expect(screen.getAllByText('预期产出').length).toBeGreaterThan(0);
   expect(screen.getAllByText('获得采用率数据。').length).toBeGreaterThan(0);
+  expect(screen.queryByLabelText('标题')).not.toBeInTheDocument();
+});
+
+test('opens one plan step for editing on demand', () => {
+  render(
+    <PlanConfirmation
+      plan={plan}
+      onChange={jest.fn()}
+      onConfirm={jest.fn()}
+      onCancel={jest.fn()}
+    />
+  );
+
+  expect(screen.queryByLabelText('标题')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '编辑步骤 1' }));
+  expect(screen.getByLabelText('标题')).toHaveValue('AI 产业采用率');
+  expect(screen.getByLabelText('搜索语句')).toHaveValue('AI adoption survey');
 });
