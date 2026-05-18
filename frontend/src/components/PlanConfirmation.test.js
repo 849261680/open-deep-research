@@ -61,3 +61,29 @@ test('edits, deletes, and confirms plan items', () => {
     plan_items: [],
   });
 });
+
+test('presents the research plan as an agent execution contract', () => {
+  render(
+    <PlanConfirmation
+      plan={plan}
+      onChange={jest.fn()}
+      onConfirm={jest.fn()}
+      onCancel={jest.fn()}
+    />
+  );
+
+  expect(screen.getByText('Agent Plan')).toBeInTheDocument();
+  expect(screen.getByText('1 个研究维度')).toBeInTheDocument();
+  expect(screen.getByText('1 条搜索查询')).toBeInTheDocument();
+  expect(screen.getByText('1 个证据目标')).toBeInTheDocument();
+  expect(screen.getByText('步骤 1')).toBeInTheDocument();
+  expect(screen.getByText('数据趋势')).toBeInTheDocument();
+  expect(screen.getByText('为什么要查')).toBeInTheDocument();
+  expect(screen.getAllByText('需要量化趋势。').length).toBeGreaterThan(0);
+  expect(screen.getByText('搜索查询')).toBeInTheDocument();
+  expect(screen.getAllByText('AI adoption survey').length).toBeGreaterThan(0);
+  expect(screen.getByText('预期证据')).toBeInTheDocument();
+  expect(screen.getAllByText('统计数据').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('预期产出').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('获得采用率数据。').length).toBeGreaterThan(0);
+});
