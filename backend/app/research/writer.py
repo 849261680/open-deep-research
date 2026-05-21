@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime
@@ -114,7 +115,7 @@ class ResearchWriter:
             logger.warning("research writer failed: %s", exc)
             return self._fallback_report(query, sections, context, sources)
 
-    def evaluate_claim_support(
+    async def evaluate_claim_support(
         self,
         report: str,
         reference_entries: list[dict[str, str]],
@@ -129,6 +130,10 @@ class ResearchWriter:
             self._claim_support_record(claim, valid_numbers, reference_entries)
             for claim in self._extract_report_claims(report)
         ]
+        self._apply_semantic_claim_support(
+            claims,
+            await self._semantic_claim_support(claims),
+        )
         supported_count = sum(
             1 for claim in claims if claim["citation_support"] == "supported"
         )
@@ -230,6 +235,144 @@ class ResearchWriter:
                 if 0 < number <= len(reference_entries)
             ],
         }
+
+    async def _semantic_claim_support(
+        self,
+        claims: list[dict[str, object]],
+    ) -> dict[int, dict[str, str]]:
+        """Ask the LLM to judge cited claims against available source text."""
+        candidates = self._semantic_claim_candidates(claims)
+        if not candidates:
+            return {}
+        prompt = self._semantic_claim_prompt(candidates)
+        try:
+            response = await self.llm._acall(prompt, temperature=0.0)
+            if self.cost_tracker is not None:
+                self.cost_tracker.track_llm_call(
+                    step="claim_support_validation",
+                    prompt=prompt,
+                    response=response,
+                )
+            parsed = self._parse_json(response)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("claim support validation failed: %s", exc)
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        raw_claims = parsed.get("claims", [])
+        if not isinstance(raw_claims, list):
+            return {}
+        results: dict[int, dict[str, str]] = {}
+        for item in raw_claims:
+            if not isinstance(item, dict):
+                continue
+            claim_index = item.get("claim_index")
+            status = str(item.get("citation_support", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if not isinstance(claim_index, int):
+                continue
+            if status not in {"supported", "partially_supported", "unsupported"}:
+                continue
+            results[claim_index] = {
+                "citation_support": status,
+                "reason": reason or "语义校验未给出原因",
+            }
+        return results
+
+    def _semantic_claim_candidates(
+        self,
+        claims: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        """Build compact semantic validation inputs for claims with source text."""
+        candidates: list[dict[str, object]] = []
+        for index, claim in enumerate(claims):
+            if claim.get("citation_support") == "unsupported":
+                continue
+            citations = claim.get("citations", [])
+            if not isinstance(citations, list):
+                continue
+            evidence = []
+            for citation in citations[:3]:
+                if not isinstance(citation, dict):
+                    continue
+                source_text = self._reference_text(citation)
+                if source_text:
+                    evidence.append(
+                        {
+                            "title": str(citation.get("title", "")),
+                            "link": str(citation.get("link", "")),
+                            "text": source_text,
+                        }
+                    )
+            if evidence:
+                candidates.append(
+                    {
+                        "claim_index": index,
+                        "claim": str(claim.get("text", "")),
+                        "evidence": evidence,
+                    }
+                )
+        return candidates[:20]
+
+    def _semantic_claim_prompt(self, candidates: list[dict[str, object]]) -> str:
+        """Render a compact JSON-only semantic citation validation prompt."""
+        payload = json.dumps(candidates, ensure_ascii=False)
+        return f"""\
+你是引用质量审校员。请逐条判断断言是否被其引用来源文本语义支持。
+
+判定标准：
+- supported：来源文本明确支持断言中的核心事实、数值、时间和主体。
+- partially_supported：来源文本只支持部分事实，或断言有轻微外推但不完全无关。
+- unsupported：来源文本缺少核心事实、与断言矛盾，或无法证明断言。
+
+待校验断言 JSON：
+{payload}
+
+只返回 JSON，不要解释：
+{{
+  "claims": [
+    {{
+      "claim_index": 0,
+      "citation_support": "supported",
+      "reason": "一句话说明"
+    }}
+  ]
+}}
+"""
+
+    def _apply_semantic_claim_support(
+        self,
+        claims: list[dict[str, object]],
+        semantic_results: dict[int, dict[str, str]],
+    ) -> None:
+        """Overlay semantic validation results onto citation-number records."""
+        for index, result in semantic_results.items():
+            if index < 0 or index >= len(claims):
+                continue
+            claims[index]["citation_support"] = result["citation_support"]
+            claims[index]["reason"] = result["reason"]
+            claims[index]["support_method"] = "llm_semantic"
+
+    def _reference_text(self, citation: dict[str, object]) -> str:
+        """Return compact source text for semantic validation."""
+        for key in ("source_text", "extracted_content", "summary", "snippet"):
+            value = str(citation.get(key, "")).strip()
+            if value:
+                return value[:1600]
+        return ""
+
+    def _parse_json(self, response: str) -> dict[str, object] | None:
+        """Parse a JSON object from plain or fenced LLM output."""
+        text = response.strip()
+        if "```json" in text:
+            text = text.split("```json", 1)[1].split("```", 1)[0].strip()
+        elif text.startswith("```"):
+            text = text.split("```", 1)[1].rsplit("```", 1)[0].strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     def _citation_numbers(self, claim: str) -> list[int]:
         """Return unique bracket citation numbers from one claim."""
@@ -438,7 +581,18 @@ class ResearchWriter:
                 seen_links,
                 title=source.title,
                 link=source.link,
+                source_text=self._source_text_from_source(source),
             )
+
+        for item in context:
+            for source in item.sources:
+                self._append_reference_entry(
+                    entries,
+                    seen_links,
+                    title=source.title,
+                    link=source.link,
+                    source_text=self._source_text_from_source(source),
+                )
 
         for citation in self._iter_all_citations(sections, context):
             self._append_reference_entry(
@@ -484,17 +638,47 @@ class ResearchWriter:
         *,
         title: str,
         link: str,
+        source_text: str = "",
     ) -> None:
         normalized_link = link.strip()
-        if not normalized_link or normalized_link in seen_links:
+        if not normalized_link:
+            return
+        if normalized_link in seen_links:
+            self._fill_reference_text(entries, normalized_link, source_text)
             return
         seen_links.add(normalized_link)
-        entries.append(
-            {
-                "title": title.strip() or normalized_link,
-                "link": normalized_link,
-            }
-        )
+        entry = {
+            "title": title.strip() or normalized_link,
+            "link": normalized_link,
+        }
+        text = source_text.strip()
+        if text:
+            entry["source_text"] = text
+        entries.append(entry)
+
+    def _fill_reference_text(
+        self,
+        entries: list[dict[str, str]],
+        link: str,
+        source_text: str,
+    ) -> None:
+        """Backfill source text when a later duplicate has richer evidence."""
+        text = source_text.strip()
+        if not text:
+            return
+        for entry in entries:
+            if entry.get("link") == link and not entry.get("source_text"):
+                entry["source_text"] = text
+                return
+
+    def _source_text_from_source(self, source: ResearchSource) -> str:
+        """Build compact validation text from a research source."""
+        parts = [
+            source.extracted_content.strip(),
+            source.summary.strip(),
+            source.snippet.strip(),
+        ]
+        return "\n".join(part for part in parts if part)[:2400]
 
     def _build_source_index(self, reference_entries: list[dict[str, str]]) -> dict[str, int]:
         return {

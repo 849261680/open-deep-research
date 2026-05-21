@@ -1073,10 +1073,12 @@ class TestResearchWriter:
             ]
         )
 
-        result = writer.evaluate_claim_support(
+        import asyncio
+
+        result = asyncio.run(writer.evaluate_claim_support(
             report,
             [{"title": "Enterprise AI Survey", "link": "https://example.com/survey"}],
-        )
+        ))
         summary = result["summary"]
         claims = result["claims"]
 
@@ -1092,10 +1094,12 @@ class TestResearchWriter:
 
     def test_evaluate_claim_support_marks_partial_citations(self):
         writer = ResearchWriter()
-        result = writer.evaluate_claim_support(
+        import asyncio
+
+        result = asyncio.run(writer.evaluate_claim_support(
             "国产量子计算原型机公开了阶段性指标 [1][3]。",
             [{"title": "Quantum Source", "link": "https://example.com/quantum"}],
-        )
+        ))
         summary = result["summary"]
         claims = result["claims"]
 
@@ -1105,6 +1109,40 @@ class TestResearchWriter:
         assert summary["citation_support_rate"] == 0.5
         assert claims[0]["citation_support"] == "partially_supported"
         assert claims[0]["citation_numbers"] == [1, 3]
+
+    def test_evaluate_claim_support_uses_semantic_llm_judgment(self, monkeypatch):
+        writer = ResearchWriter()
+        prompts: list[str] = []
+
+        async def fake_acall(prompt: str, **kwargs):  # noqa: ANN003, ARG001
+            prompts.append(prompt)
+            return (
+                '{"claims": ['
+                '{"claim_index": 0, "citation_support": "unsupported", '
+                '"reason": "来源只说明收入下降，不能支撑收入增长。"}'
+                ']}'
+            )
+
+        monkeypatch.setattr(writer.llm, "_acall", fake_acall)
+
+        import asyncio
+
+        result = asyncio.run(writer.evaluate_claim_support(
+            "公司收入同比增长 30% [1]。",
+            [
+                {
+                    "title": "财报",
+                    "link": "https://example.com/report",
+                    "source_text": "财报显示，公司收入同比下降 10%。",
+                }
+            ],
+        ))
+        claims = result["claims"]
+
+        assert prompts
+        assert isinstance(claims, list)
+        assert claims[0]["citation_support"] == "unsupported"
+        assert claims[0]["reason"] == "来源只说明收入下降，不能支撑收入增长。"
 
 
 class TestSearchTools:

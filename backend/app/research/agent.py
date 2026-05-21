@@ -134,7 +134,7 @@ class ResearchAgent:
                 task.sections,
                 contexts,
             )
-            quality_result = self.writer.evaluate_claim_support(report, reference_entries)
+            quality_result = await self.writer.evaluate_claim_support(report, reference_entries)
             task.claim_checks = cast(
                 list[dict[str, object]],
                 quality_result["claims"],
