@@ -89,6 +89,7 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
           <StartResearchButton
             disabled={!canStartResearch}
             onClick={startResearch}
+            compact
           />
           <button
             type="button"
@@ -201,12 +202,14 @@ const PlanMetric = ({ label }) => (
 );
 
 // 触发已确认计划的深度研究流程。
-const StartResearchButton = ({ disabled, onClick }) => (
+const StartResearchButton = ({ compact = false, disabled, onClick }) => (
   <button
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-black text-accent-dark disabled:opacity-60"
+    className={`inline-flex items-center rounded-full bg-accent text-accent-dark disabled:opacity-60 ${
+      compact ? 'gap-1.5 px-4 py-2 text-sm font-semibold' : 'gap-2 px-5 py-2.5 text-sm font-black'
+    }`}
   >
     <Play className="h-4 w-4" />
     开始研究
