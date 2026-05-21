@@ -1065,6 +1065,8 @@ def test_research_agent_emits_gpt_researcher_payload(monkeypatch, caplog) -> Non
     assert report_complete["data"]["workflow_engine"] == "langgraph"
     assert report_complete["data"]["report"] == "# report"
     assert report_complete["data"]["cost_summary"]["total_tokens"] > 0
+    assert report_complete["data"]["process_metrics"]["total_tokens"] > 0
+    assert report_complete["data"]["process_metrics"]["elapsed_seconds"] >= 0
     assert report_complete["data"]["results"][0]["title"] == context.query
     assert report_complete["data"]["results"][0]["verification"]["passed"] is True
     assert report_complete["data"]["results"][0]["compressed_evidence"] == context.compressed_evidence

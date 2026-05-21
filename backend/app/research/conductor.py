@@ -22,6 +22,7 @@ from .models import ResearchSource
 from .models import SubQueryContext
 from .query_planner import QueryPlanner
 from .retriever import ResearchRetriever
+from .metrics import ResearchMetrics
 from .scraper import ResearchScraper
 from .source_curator import SourceCurator
 
@@ -151,6 +152,8 @@ class ResearchConductor:
         self.scraper = ResearchScraper()
         self.context_manager = ResearchContextManager(researcher.cost_tracker)
         self.source_curator = SourceCurator()
+        if not hasattr(researcher, "metrics"):
+            researcher.metrics = ResearchMetrics()
 
     async def conduct_research(
         self, on_event: ResearchEventCallback | None = None
@@ -351,6 +354,8 @@ class ResearchConductor:
         if confirmed:
             return self._normalize_confirmed_plan_items(confirmed)
         initial_results = await self.retriever.search(self.researcher.query)
+        self._metrics().record_searches()
+        await self._emit_metrics(on_event)
         await self._emit_search_result(
             on_event,
             step=0,
@@ -755,6 +760,8 @@ class ResearchConductor:
             sub_query,
         )
         search_results = await self._search_planned_queries(planned_queries)
+        self._metrics().record_searches(len(planned_queries))
+        await self._emit_metrics(on_event)
         plan_item = plan_item or self._plan_item_for_query(
             getattr(self.researcher, "plan_items", []),
             sub_query,
@@ -764,6 +771,8 @@ class ResearchConductor:
             max_sources=8,
             evidence_targets=plan_item.evidence_targets if plan_item else None,
         )
+        self._metrics().record_selected_sources(len(search_results))
+        await self._emit_metrics(on_event)
         await self._emit_search_result(
             on_event,
             step=step,
@@ -777,6 +786,8 @@ class ResearchConductor:
             max_sources=read_budget,
         )
         source_summary = self._source_summary(scraped_sources)
+        self._metrics().record_read_sources(source_summary["read_count"])
+        await self._emit_metrics(on_event)
         await self._emit(
             on_event,
             "analysis_progress",
@@ -801,6 +812,8 @@ class ResearchConductor:
         evidence = self.researcher.evidence_store.get_many(evidence_ids)
         citations = self.researcher.evidence_store.get_citations(evidence_ids)
         self._mark_cited_sources(scraped_sources, citations)
+        self._metrics().record_citations([citation.link for citation in citations])
+        await self._emit_metrics(on_event)
         source_summary = self._source_summary(scraped_sources)
         compressed_evidence = compression_service.compress_evidence(sub_query, evidence)
         context = await self.context_manager.get_context(sub_query, scraped_sources)
@@ -1029,6 +1042,19 @@ class ResearchConductor:
             "cited_count": sum(1 for source in sources if source.status == "cited"),
             "discarded_count": sum(1 for source in sources if source.status == "discarded"),
         }
+
+    def _metrics(self) -> ResearchMetrics:
+        """Return the researcher's process metrics collector."""
+        return self.researcher.metrics
+
+    async def _emit_metrics(self, on_event: ResearchEventCallback | None) -> None:
+        """Emit the latest process metrics snapshot."""
+        await self._emit(
+            on_event,
+            "metrics_update",
+            "研究指标已更新",
+            self._metrics().snapshot(self.researcher.cost_tracker.summary()),
+        )
 
     async def _emit(
         self,

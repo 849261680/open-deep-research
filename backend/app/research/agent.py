@@ -18,6 +18,7 @@ from .conductor import ResearchConductor
 from .config import ResearchConfig
 from .cost_tracker import CostTracker
 from .models import DeepResearchDecision
+from .metrics import ResearchMetrics
 from .models import ResearchPlanItem
 from .models import ResearchSource
 from .models import SubQueryContext
@@ -62,6 +63,7 @@ class ResearchAgent:
         self.request_id = request_id
         self.evidence_store = EvidenceStore()
         self.cost_tracker = CostTracker()
+        self.metrics = ResearchMetrics()
         self.conductor = ResearchConductor(self)
         self.writer = ResearchWriter(self.cost_tracker, config=resolved_config)
 
@@ -126,6 +128,7 @@ class ResearchAgent:
             )
             task.final_report = report
             task.cost_summary = self.cost_tracker.summary()
+            task.process_metrics = self.metrics.snapshot(task.cost_summary)
             reference_entries = self.writer._collect_reference_entries(
                 self.research_sources,
                 task.sections,
@@ -149,6 +152,11 @@ class ResearchAgent:
                 "message": "成本统计已完成",
                 "data": task.cost_summary,
             }
+            yield {
+                "type": "metrics_update",
+                "message": "研究指标已更新",
+                "data": task.process_metrics,
+            }
 
             report_payload = {
                 "type": "report_complete",
@@ -163,6 +171,7 @@ class ResearchAgent:
                     "workflow_engine": "langgraph",
                     "cost_summary": task.cost_summary,
                     "quality_summary": task.quality_summary,
+                    "process_metrics": task.process_metrics,
                     "claim_checks": task.claim_checks,
                     "plan": [
                         {
@@ -542,5 +551,6 @@ class ResearchAgent:
                 "source_count": len(self.research_sources),
                 "total_tokens": task.cost_summary.get("total_tokens", 0),
                 "estimated_cost_usd": task.cost_summary.get("estimated_cost_usd", 0),
+                "process_metrics": task.process_metrics,
             },
         )

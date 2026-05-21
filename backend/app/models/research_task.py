@@ -88,6 +88,7 @@ class ResearchTask(BaseModel):
     final_report: str = ""
     cost_summary: dict[str, object] = Field(default_factory=dict)
     quality_summary: dict[str, object] = Field(default_factory=dict)
+    process_metrics: dict[str, object] = Field(default_factory=dict)
     claim_checks: list[dict[str, object]] = Field(default_factory=list)
     stream_events: list[dict[str, object]] = Field(default_factory=list)
     created_at: str = Field(default_factory=utc_now)

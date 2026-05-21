@@ -49,7 +49,7 @@ const StreamingResults = ({ updates }) => {
       case 'analysis_progress': return Brain;
       case 'deep_research_decision': return GitBranch;
       case 'step_complete': return CheckCircle;
-      case 'cost_update': return DollarSign;
+      case 'cost_update': case 'metrics_update': return DollarSign;
       case 'report_generating': return FileText;
       case 'report_complete': return CheckCircle;
       case 'error': case 'stopped': return AlertCircle;
@@ -67,7 +67,7 @@ const StreamingResults = ({ updates }) => {
         return { iconColor: '#163300', bg: 'rgba(159,232,112,0.12)', dot: '#9fe870' };
       case 'plan': case 'search_result': case 'step_complete': case 'report_complete':
         return { iconColor: '#054d28', bg: '#e2f6d5', dot: '#054d28' };
-      case 'cost_update':
+      case 'cost_update': case 'metrics_update':
         return { iconColor: '#454745', bg: '#F5F8F2', dot: '#454745' };
       case 'error': case 'stopped':
         return { iconColor: '#d03238', bg: '#FDECEA', dot: '#d03238' };
@@ -86,6 +86,7 @@ const StreamingResults = ({ updates }) => {
       case 'step_start': case 'step_retry': case 'search_progress': case 'search_result': return '检索信息中...';
       case 'analysis_progress': case 'deep_research_decision': case 'step_complete': return '分析整理中...';
       case 'cost_update': return '更新成本统计中...';
+      case 'metrics_update': return '更新研究指标中...';
       case 'report_generating': return '生成报告中...';
       case 'report_complete': return '报告已生成';
       case 'error': return '研究过程中出现问题';
@@ -105,6 +106,7 @@ const StreamingResults = ({ updates }) => {
     let latestCompletedQuery = null;
     let latestDeepDecision = null;
     let latestCostSummary = null;
+    let latestProcessMetrics = null;
     let phase = 'planning';
     let statusType = latestUpdate?.type || 'planning';
     let timestamp = getUpdateTimestamp(latestUpdate);
@@ -150,6 +152,9 @@ const StreamingResults = ({ updates }) => {
         case 'cost_update':
           latestCostSummary = update.data || {};
           break;
+        case 'metrics_update':
+          latestProcessMetrics = update.data || {};
+          break;
         case 'report_generating': phase = 'reporting'; statusType = 'report_generating'; break;
         case 'report_complete': phase = 'completed'; statusType = 'report_complete'; break;
         case 'error': phase = 'error'; statusType = 'error'; break;
@@ -176,7 +181,7 @@ const StreamingResults = ({ updates }) => {
         if (activeCount > 0) title = activeCount > 1 ? `正在并行研究 ${activeCount} 个子查询` : '正在研究子查询';
         else if (totalSteps > 0 && completedCount === totalSteps) title = '子查询已全部完成，等待汇总';
         else if (latestCompletedQuery) title = '正在继续推进剩余子查询';
-        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery, costSummary: latestCostSummary };
+        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery, costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
       }
       case 'deepening': {
         const followUps = Array.isArray(latestDeepDecision?.follow_up_queries) ? latestDeepDecision.follow_up_queries : [];
@@ -190,12 +195,13 @@ const StreamingResults = ({ updates }) => {
           extra: followUps.length > 3 ? `还有 ${followUps.length - 3} 个后续追问` : null,
           lastCompleted: latestDeepDecision?.reason,
           costSummary: latestCostSummary,
+          processMetrics: latestProcessMetrics,
         };
       }
       case 'reporting':
-        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery, costSummary: latestCostSummary };
+        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery, costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
       case 'completed':
-        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [], costSummary: latestCostSummary };
+        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [], costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
       case 'error':
         return { type: statusType, timestamp, title: latestUpdate?.message || '研究过程中出现问题', detail: '系统已停止当前流程，请检查错误信息。', activeItems: [] };
       case 'stopped':
@@ -234,6 +240,30 @@ const StreamingResults = ({ updates }) => {
       parts.push(`$${summary.estimated_cost_usd.toFixed(4)}`);
     }
     return parts.length > 0 ? parts.join(' · ') : null;
+  };
+
+  // Format process metrics as compact evidence of research work done.
+  const formatProcessMetrics = (metrics) => {
+    if (!metrics) return null;
+    const parts = [];
+    if (typeof metrics.search_count === 'number') parts.push(`搜索 ${metrics.search_count}`);
+    if (typeof metrics.read_count === 'number') parts.push(`阅读 ${metrics.read_count}`);
+    if (typeof metrics.cited_source_count === 'number') parts.push(`引用 ${metrics.cited_source_count}`);
+    if (typeof metrics.elapsed_seconds === 'number') parts.push(`${Math.round(metrics.elapsed_seconds)} 秒`);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  };
+
+  // Format detailed process metrics for the update log.
+  const processMetricPills = (metrics) => {
+    if (!metrics) return [];
+    const items = [];
+    if (typeof metrics.search_count === 'number') items.push(`搜索 ${metrics.search_count}`);
+    if (typeof metrics.selected_source_count === 'number') items.push(`候选 ${metrics.selected_source_count}`);
+    if (typeof metrics.read_count === 'number') items.push(`阅读 ${metrics.read_count}`);
+    if (typeof metrics.cited_source_count === 'number') items.push(`引用 ${metrics.cited_source_count}`);
+    if (typeof metrics.elapsed_seconds === 'number') items.push(`${Math.round(metrics.elapsed_seconds)} 秒`);
+    if (typeof metrics.estimated_cost_usd === 'number') items.push(`$${metrics.estimated_cost_usd.toFixed(4)}`);
+    return items;
   };
 
   const renderPills = (items, options = {}) => {
@@ -390,6 +420,17 @@ const StreamingResults = ({ updates }) => {
           </div>
         );
 
+      case 'metrics_update': {
+        const metricItems = processMetricPills(update.data);
+        if (metricItems.length === 0) return null;
+        return (
+          <div className="mt-2 pl-3 border-l-2" style={{ borderColor: '#E2E5DE' }}>
+            <p className="text-xs text-text-tertiary font-medium">过程指标</p>
+            {renderPills(metricItems, { keyPrefix: 'metrics' })}
+          </div>
+        );
+      }
+
       case 'cost_update': {
         const costSummary = formatCostSummary(update.data);
         if (!costSummary) return null;
@@ -478,6 +519,9 @@ const StreamingResults = ({ updates }) => {
                 )}
                 {currentStatus.lastCompleted && (
                   <p className="mt-2 text-xs text-text-tertiary line-clamp-1 font-normal">最近完成: {currentStatus.lastCompleted}</p>
+                )}
+                {formatProcessMetrics(currentStatus.processMetrics) && (
+                  <p className="mt-2 text-xs text-text-tertiary font-normal">指标：{formatProcessMetrics(currentStatus.processMetrics)}</p>
                 )}
                 {formatCostSummary(currentStatus.costSummary) && (
                   <p className="mt-2 text-xs text-text-tertiary font-normal">成本：{formatCostSummary(currentStatus.costSummary)}</p>

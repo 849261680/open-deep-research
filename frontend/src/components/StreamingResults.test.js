@@ -193,3 +193,32 @@ test('renders cost updates and keeps phase transition animation on the status ca
   expect(screen.getByText('12,345 tokens')).toBeInTheDocument();
   expect(screen.getByText('$0.4200')).toBeInTheDocument();
 });
+
+test('renders process metric updates in the live status', () => {
+  render(
+    <StreamingResults
+      updates={[
+        ...updates,
+        {
+          type: 'metrics_update',
+          message: '研究指标已更新',
+          data: {
+            search_count: 4,
+            read_count: 7,
+            selected_source_count: 12,
+            cited_source_count: 3,
+            elapsed_seconds: 42.4,
+            estimated_cost_usd: 0.0123,
+          },
+        },
+      ]}
+    />
+  );
+
+  const currentStatusCard = screen.getByTestId('current-status-card');
+
+  expect(within(currentStatusCard).getByText('指标：搜索 4 · 阅读 7 · 引用 3 · 42 秒')).toBeInTheDocument();
+  expect(screen.getByText('过程指标')).toBeInTheDocument();
+  expect(screen.getByText('候选 12')).toBeInTheDocument();
+  expect(screen.getByText('$0.0123')).toBeInTheDocument();
+});

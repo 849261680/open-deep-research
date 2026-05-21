@@ -74,6 +74,31 @@ test('renders structured research plan fields in the process tab', () => {
   expect(screen.getByText('补足分行业样本或达到最大深度')).toBeInTheDocument();
 });
 
+test('renders final research process metrics in the process tab', () => {
+  render(<ResearchResults data={{
+    ...resultData,
+    process_metrics: {
+      search_count: 6,
+      selected_source_count: 14,
+      read_count: 9,
+      cited_source_count: 5,
+      elapsed_seconds: 88.2,
+      total_tokens: 1234,
+      estimated_cost_usd: 0.0456,
+    },
+  }} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /研究过程/ }));
+
+  expect(screen.getByText('研究指标')).toBeInTheDocument();
+  expect(screen.getByText('搜索次数')).toBeInTheDocument();
+  expect(screen.getByText('6')).toBeInTheDocument();
+  expect(screen.getByText('读取网页')).toBeInTheDocument();
+  expect(screen.getByText('9')).toBeInTheDocument();
+  expect(screen.getByText('最终引用')).toBeInTheDocument();
+  expect(screen.getByText('$0.0456')).toBeInTheDocument();
+});
+
 test('renders deep plan steps with readable hierarchy and no empty internals', () => {
   render(
     <ResearchResults

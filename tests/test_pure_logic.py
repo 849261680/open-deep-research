@@ -376,6 +376,82 @@ class TestResearchConductor:
         assert context.source_summary["cited_count"] == 2
         assert all(source.status == "cited" for source in context.sources)
 
+    def test_process_sub_query_emits_process_metrics(self, monkeypatch):
+        class ResearcherStub:
+            def __init__(self) -> None:
+                self.query = "AI 产业采用率有哪些最新数据？"
+                self.cost_tracker = CostTracker()
+                self.visited_urls = set()
+                self.evidence_store = EvidenceStore()
+                self.task_id = "task-process-metrics"
+                self.repository = None
+                self.plan_items = [
+                    ResearchPlanItem(
+                        step=1,
+                        title="AI 产业采用率有哪些最新数据？",
+                        search_queries=["AI adoption rate", "AI adoption survey"],
+                    )
+                ]
+                self.config = ResearchConfig(max_read_pages_per_section=3)
+
+        conductor = ResearchConductor(ResearcherStub())
+        events: list[dict[str, object]] = []
+
+        async def collect_event(event: dict[str, object]) -> None:
+            events.append(event)
+
+        async def fake_search(query: str, max_results: int = 8):  # noqa: ARG001
+            return [
+                ResearchSource(
+                    title=f"Source {query}",
+                    link=f"https://example.com/{query.replace(' ', '-')}",
+                    source="web",
+                    query=query,
+                    snippet="snippet",
+                    extracted_content="content",
+                )
+            ]
+
+        async def fake_scrape(sources, visited_urls, max_sources: int = 8):  # noqa: ANN001, ARG001
+            for source in sources:
+                source.status = "read"
+            return sources
+
+        async def fake_context(query: str, sources):  # noqa: ANN001, ARG001
+            return "压缩后的上下文"
+
+        async def fake_verify(**kwargs):  # noqa: ANN003
+            return {"passed": True, "score": 1.0, "issues": [], "summary": "ok"}
+
+        monkeypatch.setattr(conductor.retriever, "search", fake_search)
+        monkeypatch.setattr(conductor.scraper, "scrape", fake_scrape)
+        monkeypatch.setattr(conductor.context_manager, "get_context", fake_context)
+        monkeypatch.setattr(
+            "backend.app.research.conductor.verifier_service.verify_section",
+            fake_verify,
+        )
+
+        import asyncio
+
+        context = asyncio.run(
+            conductor._process_sub_query(
+                1,
+                "AI 产业采用率有哪些最新数据？",
+                collect_event,
+            )
+        )
+
+        metric_events = [event for event in events if event["type"] == "metrics_update"]
+        assert metric_events
+        final_metrics = metric_events[-1]["data"]
+        assert isinstance(final_metrics, dict)
+        assert final_metrics["search_count"] == 2
+        assert final_metrics["selected_source_count"] == 2
+        assert final_metrics["read_count"] == 2
+        assert final_metrics["cited_source_count"] == len(context.citations)
+        assert final_metrics["elapsed_seconds"] >= 0
+        assert "estimated_cost_usd" in final_metrics
+
     def test_conductor_uses_confirmed_plan_items(self, monkeypatch):
         class ResearcherStub:
             def __init__(self) -> None:

@@ -77,6 +77,19 @@ const getQualitySummary = (data) => {
   };
 };
 
+const getProcessMetrics = (data) => {
+  const metrics = data?.process_metrics;
+  if (!metrics || typeof metrics !== 'object') return null;
+  return [
+    { label: '搜索次数', value: Number(metrics.search_count || 0).toLocaleString() },
+    { label: '候选来源', value: Number(metrics.selected_source_count || 0).toLocaleString() },
+    { label: '读取网页', value: Number(metrics.read_count || 0).toLocaleString() },
+    { label: '最终引用', value: Number(metrics.cited_source_count || 0).toLocaleString() },
+    { label: '总耗时', value: `${Math.round(Number(metrics.elapsed_seconds || 0))} 秒` },
+    { label: '估算成本', value: `$${Number(metrics.estimated_cost_usd || 0).toFixed(4)}` },
+  ];
+};
+
 const getPlanDescription = (step) => {
   const rationale = safeTrim(step?.rationale);
   if (rationale && !isInternalPlanText(rationale)) return rationale;
@@ -279,6 +292,7 @@ const ResearchResults = ({ data }) => {
   const [activeTab, setActiveTab] = useState('report');
   const planItems = buildPlanDisplayItems(data.plan);
   const qualitySummary = getQualitySummary(data);
+  const processMetrics = getProcessMetrics(data);
 
   const getVerificationBadge = (verification) => {
     if (!verification || typeof verification !== 'object') return null;
@@ -357,6 +371,26 @@ const ResearchResults = ({ data }) => {
 
       {activeTab === 'process' && (
         <div className="space-y-8">
+          {processMetrics && (
+            <div>
+              <h3
+                className="text-text-primary mb-5"
+                style={{ fontSize: '22px', fontWeight: 900, lineHeight: 0.9, letterSpacing: 'normal' }}
+              >
+                研究指标
+              </h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {processMetrics.map((metric) => (
+                  <QualityMetric
+                    key={metric.label}
+                    label={metric.label}
+                    value={metric.value}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Research plan */}
           {planItems.length > 0 && (
             <div>
