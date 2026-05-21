@@ -51,7 +51,9 @@ test('edits, deletes, and confirms plan items', () => {
       onCancel={jest.fn()}
     />
   );
-  fireEvent.click(screen.getByRole('button', { name: /确认计划并开始研究/ }));
+  const startButtons = screen.getAllByRole('button', { name: /^开始研究$/ });
+  expect(startButtons).toHaveLength(2);
+  fireEvent.click(startButtons[0]);
   expect(handleConfirm).toHaveBeenCalledWith([
     expect.objectContaining({ title: 'AI 企业采用率' }),
   ]);

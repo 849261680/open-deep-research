@@ -61,6 +61,9 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
   };
 
   const confirmedItems = plan.plan_items.filter((item) => item.title.trim());
+  const canStartResearch = !isLoading && confirmedItems.length > 0;
+  const startResearch = () => onConfirm(confirmedItems);
+
   const searchQueryCount = countNestedItems(plan.plan_items, 'search_queries');
   const evidenceTargetCount = countNestedItems(plan.plan_items, 'evidence_targets');
 
@@ -83,6 +86,10 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <StartResearchButton
+            disabled={!canStartResearch}
+            onClick={startResearch}
+          />
           <button
             type="button"
             onClick={addItem}
@@ -178,15 +185,10 @@ const PlanConfirmation = ({ plan, onChange, onConfirm, onCancel, isLoading = fal
       </div>
 
       <div className="mt-4 flex justify-end border-t border-border-light pt-4">
-        <button
-          type="button"
-          onClick={() => onConfirm(confirmedItems)}
-          disabled={isLoading || confirmedItems.length === 0}
-          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-black text-accent-dark disabled:opacity-60"
-        >
-          <Play className="h-4 w-4" />
-          确认计划并开始研究
-        </button>
+        <StartResearchButton
+          disabled={!canStartResearch}
+          onClick={startResearch}
+        />
       </div>
     </section>
   );
@@ -196,6 +198,19 @@ const PlanMetric = ({ label }) => (
   <span className="rounded-full border border-border-light bg-white px-3 py-1">
     {label}
   </span>
+);
+
+// 触发已确认计划的深度研究流程。
+const StartResearchButton = ({ disabled, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-black text-accent-dark disabled:opacity-60"
+  >
+    <Play className="h-4 w-4" />
+    开始研究
+  </button>
 );
 
 // 展示单个计划步骤的只读摘要。
