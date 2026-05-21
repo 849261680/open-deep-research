@@ -342,6 +342,151 @@ const StreamingResults = ({ updates }) => {
     );
   };
 
+  const stageDefinitions = [
+    { key: 'planning', label: 'Planning', title: '规划', icon: Brain },
+    { key: 'search', label: 'Search', title: '检索', icon: Search },
+    { key: 'read', label: 'Read', title: '阅读', icon: FileText },
+    { key: 'analysis', label: 'Analysis', title: '分析', icon: Brain },
+    { key: 'deep_research', label: 'Deep Research', title: '深挖', icon: GitBranch },
+    { key: 'report', label: 'Report', title: '报告', icon: FileText },
+  ];
+
+  const traceStageForUpdate = (update) => {
+    if (update.type === 'search_result' && update.data?.step === 0) return 'planning';
+    if (['planning', 'planning_step', 'plan'].includes(update.type)) return 'planning';
+    if (['step_start', 'step_retry', 'search_progress', 'search_result'].includes(update.type)) return 'search';
+    if (update.type === 'analysis_progress') return 'read';
+    if (update.type === 'step_complete') return 'analysis';
+    if (update.type === 'deep_research_decision') return 'deep_research';
+    if (['report_generating', 'report_complete'].includes(update.type)) return 'report';
+    return null;
+  };
+
+  const countItems = (items) => (Array.isArray(items) ? items.length : 0);
+
+  const sourceCountFromUpdate = (update) => (
+    countItems(update.data?.sources)
+    || countItems(update.data?.search_sources)
+    || Number(update.data?.source_summary?.searched_count || 0)
+  );
+
+  const readCountFromUpdate = (update) => (
+    Number(update.data?.source_summary?.read_count || 0)
+    || Number(update.data?.read_count || 0)
+    || countItems(update.data?.sources)
+  );
+
+  const traceEntryForUpdate = (update) => {
+    const data = update.data || {};
+    const query = data.query || data.title || update.message;
+    const sourceCount = sourceCountFromUpdate(update);
+    const readCount = readCountFromUpdate(update);
+    const citedCount = Number(data.source_summary?.cited_count || 0) || countItems(data.citations);
+    const planCount = countItems(data.plan_items) || countItems(data.sub_queries) || (Array.isArray(data) ? data.length : 0);
+    const evidenceGaps = countItems(data.evidence_gaps);
+    const followUps = countItems(data.follow_up_queries);
+    const stats = [];
+    if (planCount > 0) stats.push(`${planCount} 个维度`);
+    if (sourceCount > 0) stats.push(`来源 ${sourceCount}`);
+    if (readCount > 0) stats.push(`阅读 ${readCount}`);
+    if (citedCount > 0) stats.push(`引用 ${citedCount}`);
+    if (evidenceGaps > 0) stats.push(`缺口 ${evidenceGaps}`);
+    if (followUps > 0) stats.push(`追问 ${followUps}`);
+
+    return {
+      title: query,
+      detail: data.reason || data.description || data.stop_condition || update.message,
+      stats,
+    };
+  };
+
+  const buildAgentTrace = () => {
+    const stageIndex = new Map(stageDefinitions.map((stage, index) => [stage.key, index]));
+    const stageEvents = new Map(stageDefinitions.map((stage) => [stage.key, []]));
+    let latestStageKey = null;
+
+    visibleUpdates.forEach((update) => {
+      const stageKey = traceStageForUpdate(update);
+      if (!stageKey) return;
+      latestStageKey = stageKey;
+      stageEvents.get(stageKey).push(traceEntryForUpdate(update));
+    });
+
+    const latestIndex = latestStageKey ? stageIndex.get(latestStageKey) : -1;
+    return stageDefinitions.map((stage, index) => {
+      const events = stageEvents.get(stage.key);
+      return {
+        ...stage,
+        events,
+        active: index === latestIndex && !isComplete,
+        complete: events.length > 0 && (index < latestIndex || isComplete),
+      };
+    });
+  };
+
+  const agentTrace = buildAgentTrace();
+
+  const renderAgentTrace = () => (
+    <div className="px-6 py-5 border-b border-border-light" data-testid="agent-trace">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-text-tertiary">Agent Trace</p>
+          <p className="mt-1 text-sm font-medium text-text-primary">计划、检索、阅读、分析、深挖和报告生成路径</p>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {agentTrace.map((stage) => {
+          const StageIcon = stage.icon;
+          const latestEntry = stage.events[stage.events.length - 1];
+          const tone = stage.active ? '#9fe870' : stage.complete ? '#054d28' : '#C4C9C1';
+          const background = stage.active ? 'rgba(159,232,112,0.14)' : stage.complete ? '#e2f6d5' : '#F5F8F2';
+          return (
+            <div
+              key={stage.key}
+              data-testid={`agent-trace-${stage.key}`}
+              className="min-w-0 rounded-xl p-4"
+              style={{ background, boxShadow: 'rgba(14,15,12,0.08) 0px 0px 0px 1px' }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full" style={{ background: '#FFFFFF', color: tone }}>
+                  <StageIcon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-text-primary">{stage.label} · {stage.title}</p>
+                    {stage.active && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#163300', color: '#e2f6d5' }}>进行中</span>}
+                  </div>
+                  {latestEntry ? (
+                    <div className="mt-2 min-w-0">
+                      <p className="truncate text-xs font-medium text-text-primary">{latestEntry.title}</p>
+                      {latestEntry.detail && (
+                        <p className="mt-1 break-words text-xs font-normal text-text-tertiary" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {latestEntry.detail}
+                        </p>
+                      )}
+                      {renderPills(latestEntry.stats, { keyPrefix: `trace-${stage.key}`, limit: 4 })}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs font-normal text-text-tertiary">等待该阶段事件</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const planItemsFromData = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.plan_items)) return data.plan_items;
+    if (Array.isArray(data?.planItems)) return data.planItems;
+    if (Array.isArray(data?.sub_queries)) {
+      return data.sub_queries.map((title, index) => ({ step: index + 1, title }));
+    }
+    return [];
+  };
   const renderUpdateData = (update) => {
     if (!update.data) return null;
     switch (update.type) {
@@ -362,12 +507,14 @@ const StreamingResults = ({ updates }) => {
         );
         return null;
 
-      case 'plan':
+      case 'plan': {
+        const planItems = planItemsFromData(update.data);
+        if (planItems.length === 0) return null;
         return (
           <div className="mt-2 space-y-1">
-            {update.data.map((step, index) => (
+            {planItems.map((step, index) => (
               <div key={index} className="flex items-start gap-2 text-xs">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: '#e2f6d5', color: '#163300' }}>{step.step}</span>
+                <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: '#e2f6d5', color: '#163300' }}>{step.step || index + 1}</span>
                 <div className="flex-1">
                   <span className="font-semibold text-text-primary">{step.title}</span>
                   {step.description && <p className="text-text-tertiary mt-0.5 font-normal">{step.description}</p>}
@@ -376,6 +523,7 @@ const StreamingResults = ({ updates }) => {
             ))}
           </div>
         );
+      }
 
       case 'search_result': {
         const searchQueries = update.data?.queries || (update.data?.query ? [update.data.query] : []);
@@ -568,6 +716,8 @@ const StreamingResults = ({ updates }) => {
           </div>
         </div>
       )}
+
+      {renderAgentTrace()}
 
       {/* Update log */}
       <div className="p-6">

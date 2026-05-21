@@ -260,3 +260,94 @@ test('advances elapsed metric every second between backend updates', () => {
     jest.useRealTimers();
   }
 });
+
+test('renders agent trace stages with source, read, deep research, and report details', () => {
+  const longQuery = '企业级 AI Agent 在软件工程中的落地路径、成本结构、风险治理和组织采用节奏';
+  render(
+    <StreamingResults
+      updates={[
+        {
+          type: 'planning',
+          message: '正在进行初始搜索并规划子查询...',
+          data: { query: longQuery },
+        },
+        {
+          type: 'plan',
+          message: '子查询规划完成',
+          data: {
+            plan_items: [
+              { step: 1, title: longQuery },
+              { step: 2, title: '安全治理' },
+            ],
+            sub_queries: [longQuery, '安全治理'],
+          },
+        },
+        {
+          type: 'search_result',
+          message: '搜索完成',
+          data: {
+            step: 1,
+            query: longQuery,
+            sources: [
+              { title: 'State of AI', link: 'https://example.com/ai' },
+              { title: 'Agent Survey', link: 'https://example.com/survey' },
+              { title: 'Security Guide', link: 'https://example.com/security' },
+            ],
+          },
+        },
+        {
+          type: 'analysis_progress',
+          message: '已阅读相关资料，正在整理',
+          data: {
+            step: 1,
+            query: longQuery,
+            read_count: 2,
+            source_summary: { searched_count: 3, read_count: 2, cited_count: 1 },
+          },
+        },
+        {
+          type: 'step_complete',
+          message: '完成子查询',
+          data: {
+            step: 1,
+            title: longQuery,
+            source_summary: { searched_count: 3, read_count: 2, cited_count: 1 },
+            citations: [{ title: 'State of AI', link: 'https://example.com/ai' }],
+          },
+        },
+        {
+          type: 'deep_research_decision',
+          message: '深挖判断',
+          data: {
+            query: longQuery,
+            reason: '现有证据缺少真实企业迁移失败案例。',
+            evidence_gaps: ['失败案例', '成本数据'],
+            follow_up_queries: ['AI agent rollout failure postmortem'],
+          },
+        },
+        {
+          type: 'report_generating',
+          message: '正在生成最终研究报告...',
+          data: null,
+        },
+      ]}
+    />
+  );
+
+  const trace = screen.getByTestId('agent-trace');
+
+  expect(within(trace).getByText('Agent Trace')).toBeInTheDocument();
+  expect(within(trace).getByText('Planning · 规划')).toBeInTheDocument();
+  expect(within(trace).getByText('Search · 检索')).toBeInTheDocument();
+  expect(within(trace).getByText('Read · 阅读')).toBeInTheDocument();
+  expect(within(trace).getByText('Analysis · 分析')).toBeInTheDocument();
+  expect(within(trace).getByText('Deep Research · 深挖')).toBeInTheDocument();
+  expect(within(trace).getByText('Report · 报告')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-planning')).getByText('2 个维度')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-search')).getByText('来源 3')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-read')).getByText('阅读 2')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-analysis')).getByText('引用 1')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-deep_research')).getByText('缺口 2')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-deep_research')).getByText('追问 1')).toBeInTheDocument();
+  expect(within(screen.getByTestId('agent-trace-report')).getByText('进行中')).toBeInTheDocument();
+});
