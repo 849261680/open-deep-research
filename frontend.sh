@@ -45,14 +45,14 @@ install_frontend_deps_if_needed
 
 PORT="${PORT:-3003}"
 HOST="${HOST:-0.0.0.0}"
-BROWSER="${BROWSER:-none}"
+BROWSER="${BROWSER:-}"
 FAST_REFRESH="${FAST_REFRESH:-true}"
 WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}"
 CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-false}"
 
 echo "✅ 前端即将运行在 http://localhost:${PORT}"
 echo "♻️  前端热重载已启用，监听 frontend/src"
-echo "🧭 浏览器自动打开: ${BROWSER}"
+echo "🧭 浏览器自动打开: ${BROWSER:-默认浏览器}"
 log_elapsed "交给 react-scripts 前的准备完成"
 HOST="$HOST" \
 PORT="$PORT" \

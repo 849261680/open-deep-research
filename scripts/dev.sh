@@ -81,7 +81,7 @@ install_frontend_deps_if_needed
 # 启动前端
 HOST=0.0.0.0 \
 PORT=3003 \
-BROWSER="${BROWSER:-none}" \
+BROWSER="${BROWSER:-}" \
 FAST_REFRESH="${FAST_REFRESH:-true}" \
 WATCHPACK_POLLING="${WATCHPACK_POLLING:-false}" \
 CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-false}" \
