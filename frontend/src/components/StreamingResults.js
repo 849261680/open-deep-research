@@ -14,6 +14,9 @@ const StreamingResults = ({ updates }) => {
   const scrollContainerRef = useRef(null);
   const [animatingIndex, setAnimatingIndex] = useState(null);
   const prevLengthRef = useRef(0);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const isComplete = updates.length > 0 && updates[updates.length - 1]?.type === 'report_complete';
+  const latestUpdate = updates[updates.length - 1];
 
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -33,8 +36,13 @@ const StreamingResults = ({ updates }) => {
     }
   }, [updates]);
 
-  const isComplete = updates.length > 0 && updates[updates.length - 1]?.type === 'report_complete';
-  const latestUpdate = updates[updates.length - 1];
+  useEffect(() => {
+    const terminalTypes = new Set(['report_complete', 'error', 'stopped']);
+    if (updates.length === 0 || terminalTypes.has(latestUpdate?.type)) return undefined;
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [latestUpdate?.type, updates.length]);
+
   const visibleUpdates = updates.length > 1
     ? updates.filter((update) => update.type !== 'task_created')
     : updates;
@@ -107,6 +115,7 @@ const StreamingResults = ({ updates }) => {
     let latestDeepDecision = null;
     let latestCostSummary = null;
     let latestProcessMetrics = null;
+    let latestProcessMetricsTimestamp = null;
     let phase = 'planning';
     let statusType = latestUpdate?.type || 'planning';
     let timestamp = getUpdateTimestamp(latestUpdate);
@@ -154,9 +163,16 @@ const StreamingResults = ({ updates }) => {
           break;
         case 'metrics_update':
           latestProcessMetrics = update.data || {};
+          latestProcessMetricsTimestamp = getUpdateTimestamp(update);
           break;
         case 'report_generating': phase = 'reporting'; statusType = 'report_generating'; break;
-        case 'report_complete': phase = 'completed'; statusType = 'report_complete'; break;
+        case 'report_complete':
+          phase = 'completed'; statusType = 'report_complete';
+          if (update.data?.process_metrics) {
+            latestProcessMetrics = update.data.process_metrics;
+            latestProcessMetricsTimestamp = getUpdateTimestamp(update);
+          }
+          break;
         case 'error': phase = 'error'; statusType = 'error'; break;
         case 'stopped': phase = 'stopped'; statusType = 'stopped'; break;
         default: break;
@@ -167,6 +183,10 @@ const StreamingResults = ({ updates }) => {
     const activeCount = activeQueries.size;
     const activeQueryList = Array.from(activeQueries.values());
     const visibleTotalSteps = Math.max(totalSteps, completedCount + activeCount);
+    const processMetricFields = {
+      processMetrics: latestProcessMetrics,
+      processMetricTimestamp: latestProcessMetricsTimestamp,
+    };
 
     switch (phase) {
       case 'planning':
@@ -181,7 +201,7 @@ const StreamingResults = ({ updates }) => {
         if (activeCount > 0) title = activeCount > 1 ? `正在并行研究 ${activeCount} 个子查询` : '正在研究子查询';
         else if (totalSteps > 0 && completedCount === totalSteps) title = '子查询已全部完成，等待汇总';
         else if (latestCompletedQuery) title = '正在继续推进剩余子查询';
-        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery, costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
+        return { type: statusType, timestamp, title, detail: detailParts.join('，') || '正在收集和分析信息。', activeItems: activeQueryList.slice(0, 3), extra: activeCount > 3 ? `还有 ${activeCount - 3} 个子查询正在进行中` : null, lastCompleted: latestCompletedQuery, latestActiveQuery, costSummary: latestCostSummary, ...processMetricFields };
       }
       case 'deepening': {
         const followUps = Array.isArray(latestDeepDecision?.follow_up_queries) ? latestDeepDecision.follow_up_queries : [];
@@ -195,13 +215,13 @@ const StreamingResults = ({ updates }) => {
           extra: followUps.length > 3 ? `还有 ${followUps.length - 3} 个后续追问` : null,
           lastCompleted: latestDeepDecision?.reason,
           costSummary: latestCostSummary,
-          processMetrics: latestProcessMetrics,
+          ...processMetricFields,
         };
       }
       case 'reporting':
-        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery, costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
+        return { type: statusType, timestamp, title: '正在生成最终研究报告', detail: totalSteps > 0 ? `子查询已完成 ${completedCount}/${totalSteps}，正在汇总证据并撰写报告。` : '正在汇总证据并撰写最终报告。', activeItems: [], lastCompleted: latestCompletedQuery, costSummary: latestCostSummary, ...processMetricFields };
       case 'completed':
-        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [], costSummary: latestCostSummary, processMetrics: latestProcessMetrics };
+        return { type: statusType, timestamp, title: '研究已完成', detail: totalSteps > 0 ? `共完成 ${completedCount || totalSteps}/${totalSteps} 个子查询。` : '最终研究报告已生成。', activeItems: [], costSummary: latestCostSummary, ...processMetricFields };
       case 'error':
         return { type: statusType, timestamp, title: latestUpdate?.message || '研究过程中出现问题', detail: '系统已停止当前流程，请检查错误信息。', activeItems: [] };
       case 'stopped':
@@ -241,6 +261,23 @@ const StreamingResults = ({ updates }) => {
     }
     return parts.length > 0 ? parts.join(' · ') : null;
   };
+
+  // Advance elapsed seconds locally between backend metric events.
+  const buildLiveProcessMetrics = (metrics, metricTimestamp) => {
+    if (!metrics || isComplete || typeof metrics.elapsed_seconds !== 'number') return metrics;
+    const receivedAt = Date.parse(metricTimestamp || '');
+    if (Number.isNaN(receivedAt)) return metrics;
+    const elapsedDelta = Math.max(0, (currentTime - receivedAt) / 1000);
+    return {
+      ...metrics,
+      elapsed_seconds: metrics.elapsed_seconds + elapsedDelta,
+    };
+  };
+
+  const displayedProcessMetrics = buildLiveProcessMetrics(
+    currentStatus?.processMetrics,
+    currentStatus?.processMetricTimestamp,
+  );
 
   // Format process metrics as compact evidence of research work done.
   const formatProcessMetrics = (metrics) => {
@@ -520,8 +557,8 @@ const StreamingResults = ({ updates }) => {
                 {currentStatus.lastCompleted && (
                   <p className="mt-2 text-xs text-text-tertiary line-clamp-1 font-normal">最近完成: {currentStatus.lastCompleted}</p>
                 )}
-                {formatProcessMetrics(currentStatus.processMetrics) && (
-                  <p className="mt-2 text-xs text-text-tertiary font-normal">指标：{formatProcessMetrics(currentStatus.processMetrics)}</p>
+                {formatProcessMetrics(displayedProcessMetrics) && (
+                  <p className="mt-2 text-xs text-text-tertiary font-normal">指标：{formatProcessMetrics(displayedProcessMetrics)}</p>
                 )}
                 {formatCostSummary(currentStatus.costSummary) && (
                   <p className="mt-2 text-xs text-text-tertiary font-normal">成本：{formatCostSummary(currentStatus.costSummary)}</p>

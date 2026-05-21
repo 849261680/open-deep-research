@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import StreamingResults from './StreamingResults';
 
 const updates = [
@@ -221,4 +221,42 @@ test('renders process metric updates in the live status', () => {
   expect(screen.getByText('过程指标')).toBeInTheDocument();
   expect(screen.getByText('候选 12')).toBeInTheDocument();
   expect(screen.getByText('$0.0123')).toBeInTheDocument();
+});
+
+test('advances elapsed metric every second between backend updates', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-05-21T14:00:00.000Z'));
+
+  try {
+    render(
+      <StreamingResults
+        updates={[
+          ...updates,
+          {
+            type: 'metrics_update',
+            timestamp: '2026-05-21T14:00:00.000Z',
+            message: '研究指标已更新',
+            data: {
+              search_count: 9,
+              read_count: 22,
+              selected_source_count: 22,
+              cited_source_count: 15,
+              elapsed_seconds: 39,
+            },
+          },
+        ]}
+      />
+    );
+
+    const currentStatusCard = screen.getByTestId('current-status-card');
+    expect(within(currentStatusCard).getByText('指标：搜索 9 · 阅读 22 · 引用 15 · 39 秒')).toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(within(currentStatusCard).getByText('指标：搜索 9 · 阅读 22 · 引用 15 · 40 秒')).toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });
