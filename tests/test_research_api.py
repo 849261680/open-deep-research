@@ -877,6 +877,166 @@ def test_resume_reuses_completed_checkpoint_sections_after_restart(
     assert evidence_count == 1
 
 
+def test_resume_checkpoint_report_has_one_block_per_section_and_unique_refs(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    orchestrator = ResearchOrchestrator()
+    orchestrator.repository.db_path = str(tmp_path / "research.db")
+    orchestrator.repository._ensure_db()
+    task = ResearchTask(
+        id="task-resume-report",
+        user_id=1,
+        query="pending query",
+        status=ResearchTaskStatus.RESEARCHING,
+        sections=[
+            ResearchSection(
+                id="subquery-1",
+                step=1,
+                title="done query",
+                description="已完成切片",
+                status="completed",
+                analysis="saved analysis",
+                compressed_evidence="saved evidence",
+                citations=[
+                    Citation(
+                        title="Old Source",
+                        link="https://example.com/old",
+                        source="web",
+                    )
+                ],
+                search_sources=[
+                    {
+                        "title": "Old Source",
+                        "link": "https://example.com/old",
+                        "source": "web",
+                        "query": "done query",
+                        "snippet": "old snippet",
+                        "status": "cited",
+                    }
+                ],
+                evidence_ids=["evidence-old"],
+            ),
+            ResearchSection(
+                id="subquery-2",
+                step=2,
+                title="pending query",
+                description="待恢复切片",
+            ),
+        ],
+    )
+    orchestrator.repository.save_task(task)
+    processed_queries: list[str] = []
+    captured_prompts: list[str] = []
+
+    async def fake_plan_items(self, on_event=None):  # noqa: ANN001
+        return [
+            ResearchPlanItem(step=1, title="done query"),
+            ResearchPlanItem(step=2, title="pending query"),
+        ]
+
+    async def fake_process_query_tree(
+        self,  # noqa: ANN001
+        *,
+        step: int,
+        query: str,
+        plan_items: list[ResearchPlanItem],
+        total: int,
+        on_event=None,  # noqa: ANN001
+        depth: int = 1,
+        parent_query: str = "",
+        inherited_plan_item=None,  # noqa: ANN001
+    ) -> list[SubQueryContext]:
+        processed_queries.append(query)
+        return [
+            SubQueryContext(
+                step=step,
+                query=query,
+                sources=[
+                    ResearchSource(
+                        title="New Source",
+                        link="https://example.com/new",
+                        query=query,
+                        snippet="new snippet",
+                    )
+                ],
+                citations=[
+                    Citation(
+                        title="New Source",
+                        link="https://example.com/new",
+                        source="web",
+                    )
+                ],
+                context="new analysis",
+                compressed_evidence="new evidence",
+                evidence_ids=["evidence-new"],
+            )
+        ]
+
+    async def fake_llm_call(self, prompt: str, **kwargs):  # noqa: ANN001, ARG001
+        captured_prompts.append(prompt)
+        return (
+            "# resumed\n\n"
+            "旧分析 [1] 与新分析 [2].\n\n"
+            "## 8. 参考来源\n\n"
+            "- [9] bogus - https://example.com/bogus"
+        )
+
+    async def fake_claim_support(self, report, reference_entries):  # noqa: ANN001
+        return {
+            "claims": [],
+            "summary": {
+                "claim_count": 0,
+                "supported_claim_count": 0,
+                "partially_supported_claim_count": 0,
+                "unsupported_claim_count": 0,
+                "citation_support_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(
+        "backend.app.research.conductor.ResearchConductor._plan_items",
+        fake_plan_items,
+    )
+    monkeypatch.setattr(
+        "backend.app.research.conductor.ResearchConductor._process_query_tree",
+        fake_process_query_tree,
+    )
+    monkeypatch.setattr(
+        "backend.app.research.writer.DeepSeekLLM._acall",
+        fake_llm_call,
+    )
+    monkeypatch.setattr(
+        "backend.app.research.writer.ResearchWriter.evaluate_claim_support",
+        fake_claim_support,
+    )
+
+    events = []
+
+    async def collect() -> None:
+        async for event in orchestrator.resume_task(task.id, user_id=1):
+            events.append(event)
+
+    import asyncio
+
+    asyncio.run(collect())
+    saved = orchestrator.repository.load_task(task.id, user_id=1)
+    report_complete = next(event for event in events if event["type"] == "report_complete")
+
+    assert processed_queries == ["pending query"]
+    assert len(captured_prompts) == 1
+    assert captured_prompts[0].count("### done query\n") == 1
+    assert captured_prompts[0].count("### pending query\n") == 1
+    assert captured_prompts[0].count("saved analysis") == 1
+    assert saved is not None
+    assert saved.status == ResearchTaskStatus.COMPLETED
+    assert report_complete["data"]["report"] == saved.final_report
+    assert "https://example.com/bogus" not in saved.final_report
+    assert saved.final_report.count("https://example.com/old") == 1
+    assert saved.final_report.count("https://example.com/new") == 1
+    assert "- [1] Old Source - https://example.com/old" in saved.final_report
+    assert "- [2] New Source - https://example.com/new" in saved.final_report
+
 def test_orchestrator_run_emits_task_id_before_research(
     monkeypatch, tmp_path, caplog
 ) -> None:
